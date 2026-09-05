@@ -1,5 +1,5 @@
-import { AssetPage } from "@/components/AssetPage";
+import { AppNav } from "@/components/AppNav";
 
 export default function Home() {
-  return <AssetPage />;
+  return <AppNav />;
 }

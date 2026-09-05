@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -282,17 +282,14 @@ function HistoryRow({
   );
 }
 
-function Field({
-  value,
-  onChange,
-  style,
-  ref,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  style: object | object[];
-  ref?: Ref<TextInput>;
-}) {
+const Field = forwardRef<
+  TextInput,
+  {
+    value: string;
+    onChange: (value: string) => void;
+    style: object | object[];
+  }
+>(function Field({ value, onChange, style }, ref) {
   return (
     <TextInput
       ref={ref}
@@ -304,7 +301,7 @@ function Field({
       style={[styles.input, style]}
     />
   );
-}
+});
 
 function MiniCalendar({
   value,

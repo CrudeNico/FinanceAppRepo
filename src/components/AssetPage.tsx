@@ -80,14 +80,26 @@ function euro(value: number, digits = 2) {
   }).format(value);
 }
 
-export function AssetPage() {
+export function AssetPage({ onBack }: { onBack?: () => void }) {
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const prices = useMemo(() => SERIES[range], [range]);
   const shownPrice = hover?.value ?? ASSET.price;
 
   return (
-    <main className="mx-auto min-h-full max-w-md bg-white px-5 pb-12 pt-20">
+    <main className="relative mx-auto min-h-full max-w-md bg-white px-5 pb-12 pt-20">
+      {onBack ? (
+        <div
+          className="absolute inset-y-0 left-0 z-20 w-7"
+          onPointerDown={(event) => {
+            (event.currentTarget as HTMLElement & { __sx?: number }).__sx = event.clientX;
+          }}
+          onPointerUp={(event) => {
+            const start = (event.currentTarget as HTMLElement & { __sx?: number }).__sx ?? 0;
+            if (event.clientX - start > 40) onBack();
+          }}
+        />
+      ) : null}
       <div className="flex items-center gap-3">
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] bg-[#C8102E] text-[26px] font-bold text-white">
           V
@@ -193,7 +205,7 @@ function Chart({
 }) {
   const width = 360;
   const height = 250;
-  const left = 8;
+  const left = 0;
   const right = 62;
   const top = 22;
   const bottom = 10;

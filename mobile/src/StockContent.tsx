@@ -36,7 +36,7 @@ const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
-export function AssetScreen() {
+export function StockContent() {
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
