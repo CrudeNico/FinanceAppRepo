@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -18,13 +20,16 @@ import {
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
+const LINE = "#E8E8E8";
+const RED = "#DC2626";
+const ACTION = 68;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function HistoryCard() {
   const [entries, setEntries] = useState<HistoryEntry[]>(INITIAL_HISTORY);
   const latestYear = Math.max(yearOf(TODAY), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
 
   const years = useMemo(() => {
@@ -46,7 +51,7 @@ export function HistoryCard() {
       ...current,
     ]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
-    setSelectedId(null);
+    setOpenSwipe(null);
   }
 
   function update(id: string, patch: Partial<HistoryEntry>) {
@@ -55,10 +60,9 @@ export function HistoryCard() {
     );
   }
 
-  function removeSelected() {
-    if (!selectedId) return;
-    setEntries((current) => current.filter((entry) => entry.id !== selectedId));
-    setSelectedId(null);
+  function remove(id: string) {
+    setEntries((current) => current.filter((entry) => entry.id !== id));
+    setOpenSwipe(null);
   }
 
   const calendarEntry = entries.find((entry) => entry.id === calendarFor) ?? null;
@@ -68,11 +72,6 @@ export function HistoryCard() {
       <View style={styles.sectionBar}>
         <Text style={styles.section}>History</Text>
         <View style={styles.actions}>
-          {selectedId ? (
-            <Pressable onPress={removeSelected} hitSlop={10} style={styles.actionBtn}>
-              <TrashIcon />
-            </Pressable>
-          ) : null}
           <Pressable onPress={addRow} hitSlop={10} style={styles.actionBtn}>
             <Text style={styles.plus}>+</Text>
           </Pressable>
@@ -92,44 +91,28 @@ export function HistoryCard() {
                 {open ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {open ? (
-                <View>
+                <View style={styles.table}>
                   <View style={styles.tableHead}>
                     <Text style={[styles.headCell, styles.dateCol]}>Date</Text>
-                    <Text style={[styles.headCell, styles.numCol]}>Amt</Text>
-                    <Text style={[styles.headCell, styles.numCol]}>Px</Text>
-                    <Text style={[styles.headCell, styles.fxCol]}>FX</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>Amt</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>Px</Text>
+                    <Text style={[styles.headCell, styles.fxCol, styles.colLine]}>FX</Text>
                   </View>
                   {rows.length === 0 ? (
                     <Text style={styles.empty}>No buys yet</Text>
                   ) : (
-                    rows.map((entry) => (
-                      <Pressable
+                    rows.map((entry, index) => (
+                      <HistoryRow
                         key={entry.id}
-                        delayLongPress={2000}
-                        onLongPress={() =>
-                          setSelectedId((current) => (current === entry.id ? null : entry.id))
-                        }
-                        style={[styles.tableRow, selectedId === entry.id && styles.tableRowOn]}
-                      >
-                        <Pressable onPress={() => setCalendarFor(entry.id)} style={styles.dateCol}>
-                          <Text style={styles.dateText}>{formatDayMonth(entry.date)}</Text>
-                        </Pressable>
-                        <Field
-                          value={entry.amount}
-                          onChange={(amount) => update(entry.id, { amount })}
-                          style={styles.numCol}
-                        />
-                        <Field
-                          value={entry.price}
-                          onChange={(price) => update(entry.id, { price })}
-                          style={styles.numCol}
-                        />
-                        <Field
-                          value={entry.fx}
-                          onChange={(fx) => update(entry.id, { fx })}
-                          style={styles.fxCol}
-                        />
-                      </Pressable>
+                        entry={entry}
+                        last={index === rows.length - 1}
+                        open={openSwipe === entry.id}
+                        onOpen={() => setOpenSwipe(entry.id)}
+                        onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
+                        onDelete={() => remove(entry.id)}
+                        onDate={() => setCalendarFor(entry.id)}
+                        onUpdate={(patch) => update(entry.id, patch)}
+                      />
                     ))
                   )}
                 </View>
@@ -165,6 +148,93 @@ export function HistoryCard() {
   );
 }
 
+function HistoryRow({
+  entry,
+  last,
+  open,
+  onOpen,
+  onClose,
+  onDelete,
+  onDate,
+  onUpdate,
+}: {
+  entry: HistoryEntry;
+  last: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onDelete: () => void;
+  onDate: () => void;
+  onUpdate: (patch: Partial<HistoryEntry>) => void;
+}) {
+  const pan = useRef(new Animated.Value(0)).current;
+  const offset = useRef(0);
+
+  useEffect(() => {
+    if (!open) {
+      offset.current = 0;
+      Animated.spring(pan, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+    }
+  }, [open, pan]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15,
+      onPanResponderGrant: () => {
+        pan.stopAnimation((value) => {
+          offset.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        const next = offset.current + gesture.dx;
+        const shouldOpen = next > ACTION * 0.4 || gesture.vx > 0.35;
+        const toValue = shouldOpen ? ACTION : 0;
+        offset.current = toValue;
+        Animated.spring(pan, { toValue, useNativeDriver: true, bounciness: 0 }).start();
+        if (shouldOpen) onOpen();
+        else onClose();
+      },
+    }),
+  ).current;
+
+  return (
+    <View style={[styles.rowWrap, !last && styles.rowLine]}>
+      <View style={styles.deleteLane}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon color="#ffffff" />
+        </Pressable>
+      </View>
+      <Animated.View
+        style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
+        {...responder.panHandlers}
+      >
+        <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
+          <Text style={styles.dateText}>{formatDayMonth(entry.date)}</Text>
+        </Pressable>
+        <Field
+          value={entry.amount}
+          onChange={(amount) => onUpdate({ amount })}
+          style={[styles.numCol, styles.colLine]}
+        />
+        <Field
+          value={entry.price}
+          onChange={(price) => onUpdate({ price })}
+          style={[styles.numCol, styles.colLine]}
+        />
+        <Field
+          value={entry.fx}
+          onChange={(fx) => onUpdate({ fx })}
+          style={[styles.fxCol, styles.colLine]}
+        />
+      </Animated.View>
+    </View>
+  );
+}
+
 function Field({
   value,
   onChange,
@@ -172,7 +242,7 @@ function Field({
 }: {
   value: string;
   onChange: (value: string) => void;
-  style: object;
+  style: object | object[];
 }) {
   return (
     <TextInput
@@ -274,12 +344,12 @@ function ChevronUp() {
   );
 }
 
-function TrashIcon() {
+function TrashIcon({ color = INK }: { color?: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
       <Path
         d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-        stroke={INK}
+        stroke={color}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -315,23 +385,63 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   year: { color: INK, fontSize: 15, fontWeight: "400" },
-  tableHead: { flexDirection: "row", alignItems: "center", paddingBottom: 4 },
-  headCell: { color: MUTED, fontSize: 10, fontWeight: "600" },
+  table: {
+    borderWidth: 1,
+    borderColor: LINE,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  tableHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FAFAFA",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: LINE,
+  },
+  headCell: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "600",
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+  },
+  rowWrap: { position: "relative", overflow: "hidden" },
+  rowLine: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: LINE,
+  },
+  deleteLane: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: ACTION,
+    backgroundColor: RED,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtn: {
+    width: ACTION,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
-    marginHorizontal: -6,
-    paddingHorizontal: 6,
-    borderRadius: 8,
+    backgroundColor: "#ffffff",
+    minHeight: 36,
   },
-  tableRowOn: { backgroundColor: "#EEEEEE" },
-  dateCol: { width: 58 },
+  colLine: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: LINE,
+  },
+  dateCol: { width: 62, paddingHorizontal: 6, justifyContent: "center" },
   numCol: { flex: 1 },
-  fxCol: { width: 48 },
+  fxCol: { width: 52 },
   dateText: { color: INK, fontSize: 13 },
-  input: { color: INK, fontSize: 13, paddingVertical: 2, paddingHorizontal: 0 },
-  empty: { color: MUTED, fontSize: 12, paddingVertical: 8 },
+  input: { color: INK, fontSize: 13, paddingVertical: 8, paddingHorizontal: 6 },
+  empty: { color: MUTED, fontSize: 12, paddingVertical: 8, paddingHorizontal: 8 },
   modalBg: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.25)",

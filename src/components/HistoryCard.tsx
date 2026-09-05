@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 type HistoryEntry = {
   id: string;
@@ -32,9 +32,8 @@ export function HistoryCard() {
   const [entries, setEntries] = useState<HistoryEntry[]>(INITIAL_HISTORY);
   const latestYear = Math.max(yearOf(TODAY), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
-  const hold = useRef<number | null>(null);
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.date)));
@@ -52,7 +51,7 @@ export function HistoryCard() {
     const id = `h${Date.now()}`;
     setEntries((current) => [{ id, date: TODAY, amount: "", price: "", fx: "" }, ...current]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
-    setSelectedId(null);
+    setOpenSwipe(null);
   }
 
   function update(id: string, patch: Partial<HistoryEntry>) {
@@ -61,15 +60,9 @@ export function HistoryCard() {
     );
   }
 
-  function startHold(id: string) {
-    hold.current = window.setTimeout(() => {
-      setSelectedId((current) => (current === id ? null : id));
-    }, 2000);
-  }
-
-  function endHold() {
-    if (hold.current) window.clearTimeout(hold.current);
-    hold.current = null;
+  function remove(id: string) {
+    setEntries((current) => current.filter((entry) => entry.id !== id));
+    setOpenSwipe(null);
   }
 
   const calendarEntry = entries.find((entry) => entry.id === calendarFor) ?? null;
@@ -79,14 +72,6 @@ export function HistoryCard() {
       <div className="mt-8 flex items-center justify-between">
         <h2 className="text-[17px] font-normal text-neutral-950">History</h2>
         <div className="flex items-center gap-3">
-          {selectedId ? (
-            <button type="button" onClick={() => {
-              setEntries((current) => current.filter((entry) => entry.id !== selectedId));
-              setSelectedId(null);
-            }} aria-label="Delete row">
-              <TrashIcon />
-            </button>
-          ) : null}
           <button type="button" onClick={addRow} className="text-2xl font-light leading-none text-neutral-950">
             +
           </button>
@@ -110,52 +95,28 @@ export function HistoryCard() {
                 {open ? <ChevronUp /> : <ChevronDown />}
               </button>
               {open ? (
-                <div>
-                  <div className="flex items-center pb-1 text-[10px] font-semibold text-neutral-400">
-                    <span className="w-[58px]">Date</span>
-                    <span className="flex-1">Amt</span>
-                    <span className="flex-1">Px</span>
-                    <span className="w-12">FX</span>
+                <div className="overflow-hidden rounded-[10px] border border-[#E8E8E8]">
+                  <div className="flex items-center border-b border-[#E8E8E8] bg-[#FAFAFA] text-[10px] font-semibold text-neutral-400">
+                    <span className="w-[62px] px-1.5 py-1.5">Date</span>
+                    <span className="flex-1 border-l border-[#E8E8E8] px-1.5 py-1.5">Amt</span>
+                    <span className="flex-1 border-l border-[#E8E8E8] px-1.5 py-1.5">Px</span>
+                    <span className="w-[52px] border-l border-[#E8E8E8] px-1.5 py-1.5">FX</span>
                   </div>
                   {rows.length === 0 ? (
-                    <p className="py-2 text-xs text-neutral-400">No buys yet</p>
+                    <p className="px-2 py-2 text-xs text-neutral-400">No buys yet</p>
                   ) : (
-                    rows.map((entry) => (
-                      <div
+                    rows.map((entry, index) => (
+                      <SwipeRow
                         key={entry.id}
-                        onPointerDown={() => startHold(entry.id)}
-                        onPointerUp={endHold}
-                        onPointerLeave={endHold}
-                        className={`-mx-1.5 flex items-center rounded-lg px-1.5 py-1 ${
-                          selectedId === entry.id ? "bg-neutral-200" : ""
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          className="w-[58px] text-left text-[13px] text-neutral-950"
-                          onClick={() => setCalendarFor(entry.id)}
-                        >
-                          {formatDayMonth(entry.date)}
-                        </button>
-                        <input
-                          value={entry.amount}
-                          onChange={(event) => update(entry.id, { amount: event.target.value })}
-                          placeholder="—"
-                          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-                        />
-                        <input
-                          value={entry.price}
-                          onChange={(event) => update(entry.id, { price: event.target.value })}
-                          placeholder="—"
-                          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-                        />
-                        <input
-                          value={entry.fx}
-                          onChange={(event) => update(entry.id, { fx: event.target.value })}
-                          placeholder="—"
-                          className="w-12 bg-transparent text-[13px] outline-none"
-                        />
-                      </div>
+                        entry={entry}
+                        last={index === rows.length - 1}
+                        open={openSwipe === entry.id}
+                        onOpen={() => setOpenSwipe(entry.id)}
+                        onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
+                        onDelete={() => remove(entry.id)}
+                        onDate={() => setCalendarFor(entry.id)}
+                        onUpdate={(patch) => update(entry.id, patch)}
+                      />
                     ))
                   )}
                 </div>
@@ -187,6 +148,105 @@ export function HistoryCard() {
         </div>
       ) : null}
     </>
+  );
+}
+
+const ACTION = 68;
+
+function SwipeRow({
+  entry,
+  last,
+  open,
+  onOpen,
+  onClose,
+  onDelete,
+  onDate,
+  onUpdate,
+}: {
+  entry: HistoryEntry;
+  last: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onDelete: () => void;
+  onDate: () => void;
+  onUpdate: (patch: Partial<HistoryEntry>) => void;
+}) {
+  const startX = useRef(0);
+  const startOffset = useRef(0);
+  const [x, setX] = useState(0);
+
+  useEffect(() => {
+    setX(open ? ACTION : 0);
+  }, [open]);
+
+  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
+    startX.current = event.clientX;
+    startOffset.current = open ? ACTION : 0;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const next = Math.max(0, Math.min(ACTION, startOffset.current + event.clientX - startX.current));
+    setX(next);
+  }
+
+  function onPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    const next = startOffset.current + event.clientX - startX.current;
+    const shouldOpen = next > ACTION * 0.4;
+    setX(shouldOpen ? ACTION : 0);
+    if (shouldOpen) onOpen();
+    else onClose();
+  }
+
+  return (
+    <div className={`relative overflow-hidden ${last ? "" : "border-b border-[#E8E8E8]"}`}>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="absolute inset-y-0 left-0 flex w-[68px] items-center justify-center bg-red-600"
+        aria-label="Delete row"
+      >
+        <TrashIcon />
+      </button>
+      <div
+        className="relative flex min-h-9 items-center bg-white"
+        style={{ transform: `translateX(${x}px)` }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <button
+          type="button"
+          className="w-[62px] px-1.5 text-left text-[13px] text-neutral-950"
+          onClick={open ? onClose : onDate}
+        >
+          {formatDayMonth(entry.date)}
+        </button>
+        <input
+          value={entry.amount}
+          onChange={(event) => onUpdate({ amount: event.target.value })}
+          placeholder="—"
+          className="min-w-0 flex-1 border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
+        />
+        <input
+          value={entry.price}
+          onChange={(event) => onUpdate({ price: event.target.value })}
+          placeholder="—"
+          className="min-w-0 flex-1 border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
+        />
+        <input
+          value={entry.fx}
+          onChange={(event) => onUpdate({ fx: event.target.value })}
+          placeholder="—"
+          className="w-[52px] border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -283,7 +343,7 @@ function TrashIcon() {
   return (
     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" aria-hidden="true">
       <path
-        stroke="#111111"
+        stroke="#ffffff"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth="1.5"
