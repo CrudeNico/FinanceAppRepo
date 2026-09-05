@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import {
   Animated,
   Modal,
@@ -25,7 +25,7 @@ const RED = "#DC2626";
 const ACTION = 68;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function HistoryCard() {
+export function HistoryCard({ onAdded }: { onAdded?: () => void }) {
   const [entries, setEntries] = useState<HistoryEntry[]>(INITIAL_HISTORY);
   const latestYear = Math.max(yearOf(TODAY), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
@@ -52,6 +52,7 @@ export function HistoryCard() {
     ]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     setOpenSwipe(null);
+    onAdded?.();
   }
 
   function update(id: string, patch: Partial<HistoryEntry>) {
@@ -169,34 +170,74 @@ function HistoryRow({
 }) {
   const pan = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
+  const touchX = useRef(0);
+  const rowWidth = useRef(0);
+  const amountRef = useRef<TextInput>(null);
+  const priceRef = useRef<TextInput>(null);
+  const fxRef = useRef<TextInput>(null);
+  const openRef = useRef(onOpen);
+  const closeRef = useRef(onClose);
+  const dateRef = useRef(onDate);
+  openRef.current = onOpen;
+  closeRef.current = onClose;
+  dateRef.current = onDate;
+
+  function snap(shouldOpen: boolean) {
+    const toValue = shouldOpen ? ACTION : 0;
+    offset.current = toValue;
+    Animated.timing(pan, {
+      toValue,
+      duration: 120,
+      useNativeDriver: true,
+    }).start();
+    if (shouldOpen) openRef.current();
+    else closeRef.current();
+  }
 
   useEffect(() => {
     if (!open) {
       offset.current = 0;
-      Animated.spring(pan, { toValue: 0, useNativeDriver: true, bounciness: 0 }).start();
+      Animated.timing(pan, { toValue: 0, duration: 120, useNativeDriver: true }).start();
     }
   }, [open, pan]);
 
   const responder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15,
-      onPanResponderGrant: () => {
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (event) => {
+        touchX.current = event.nativeEvent.locationX;
         pan.stopAnimation((value) => {
           offset.current = value;
         });
       },
       onPanResponderMove: (_, gesture) => {
+        if (Math.abs(gesture.dx) < 2) return;
         pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
       },
       onPanResponderRelease: (_, gesture) => {
-        const next = offset.current + gesture.dx;
-        const shouldOpen = next > ACTION * 0.4 || gesture.vx > 0.35;
-        const toValue = shouldOpen ? ACTION : 0;
-        offset.current = toValue;
-        Animated.spring(pan, { toValue, useNativeDriver: true, bounciness: 0 }).start();
-        if (shouldOpen) onOpen();
-        else onClose();
+        if (Math.abs(gesture.dx) < 8 && Math.abs(gesture.dy) < 8) {
+          if (offset.current > ACTION / 2) {
+            closeRef.current();
+            return;
+          }
+          const x = touchX.current;
+          const width = rowWidth.current || 1;
+          const dateW = 62;
+          const fxW = 52;
+          const mid = Math.max((width - dateW - fxW) / 2, 1);
+          if (x < dateW) dateRef.current();
+          else if (x < dateW + mid) amountRef.current?.focus();
+          else if (x < dateW + mid + mid) priceRef.current?.focus();
+          else fxRef.current?.focus();
+          return;
+        }
+        if (gesture.dx > 8 || gesture.vx > 0.12) snap(true);
+        else if (gesture.dx < -8 || gesture.vx < -0.12) snap(false);
+        else snap(offset.current + gesture.dx > ACTION / 2);
       },
     }),
   ).current;
@@ -210,26 +251,32 @@ function HistoryRow({
       </View>
       <Animated.View
         style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
-        {...responder.panHandlers}
+        onLayout={(event) => {
+          rowWidth.current = event.nativeEvent.layout.width;
+        }}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
           <Text style={styles.dateText}>{formatDayMonth(entry.date)}</Text>
         </Pressable>
         <Field
+          ref={amountRef}
           value={entry.amount}
           onChange={(amount) => onUpdate({ amount })}
           style={[styles.numCol, styles.colLine]}
         />
         <Field
+          ref={priceRef}
           value={entry.price}
           onChange={(price) => onUpdate({ price })}
           style={[styles.numCol, styles.colLine]}
         />
         <Field
+          ref={fxRef}
           value={entry.fx}
           onChange={(fx) => onUpdate({ fx })}
           style={[styles.fxCol, styles.colLine]}
         />
+        <View style={StyleSheet.absoluteFill} {...responder.panHandlers} />
       </Animated.View>
     </View>
   );
@@ -239,13 +286,16 @@ function Field({
   value,
   onChange,
   style,
+  ref,
 }: {
   value: string;
   onChange: (value: string) => void;
   style: object | object[];
+  ref?: Ref<TextInput>;
 }) {
   return (
     <TextInput
+      ref={ref}
       value={value}
       onChangeText={onChange}
       placeholder="—"

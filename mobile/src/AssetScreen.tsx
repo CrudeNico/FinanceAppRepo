@@ -1,5 +1,14 @@
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Dimensions,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import Svg, {
   Circle,
   Defs,
@@ -31,14 +40,52 @@ export function AssetScreen() {
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardHeightRef = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const historyOffset = useRef({ y: 0, height: 0 });
+  const revealAfterLayout = useRef(false);
   const prices = useMemo(() => seriesFor(range), [range]);
   const shownPrice = hover?.value ?? ASSET.price;
 
+  function revealHistory() {
+    const visible = Dimensions.get("window").height - keyboardHeightRef.current;
+    const { y, height } = historyOffset.current;
+    const top = Math.max(0, y + height - visible + 20);
+    scrollRef.current?.scrollTo({ y: top, animated: true });
+  }
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (event) => {
+        const height = event.endCoordinates.height;
+        keyboardHeightRef.current = height;
+        setKeyboardHeight(height);
+        requestAnimationFrame(revealHistory);
+      },
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        keyboardHeightRef.current = 0;
+        setKeyboardHeight(0);
+      },
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingBottom: 24 + keyboardHeight }]}
       scrollEnabled={!scrubbing}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
     >
       <View style={styles.headerRow}>
         <View style={styles.logo}>
@@ -103,7 +150,24 @@ export function AssetScreen() {
         <Row label="AVERAGE PRICE" value={formatEuro(ASSET.averagePrice)} last />
       </View>
 
-      <HistoryCard />
+      <View
+        onLayout={(event) => {
+          historyOffset.current = {
+            y: event.nativeEvent.layout.y,
+            height: event.nativeEvent.layout.height,
+          };
+          if (revealAfterLayout.current) {
+            revealAfterLayout.current = false;
+            requestAnimationFrame(revealHistory);
+          }
+        }}
+      >
+        <HistoryCard
+          onAdded={() => {
+            revealAfterLayout.current = true;
+          }}
+        />
+      </View>
     </ScrollView>
   );
 }

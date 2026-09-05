@@ -173,7 +173,11 @@ function SwipeRow({
   onUpdate: (patch: Partial<HistoryEntry>) => void;
 }) {
   const startX = useRef(0);
+  const localX = useRef(0);
   const startOffset = useRef(0);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const priceRef = useRef<HTMLInputElement>(null);
+  const fxRef = useRef<HTMLInputElement>(null);
   const [x, setX] = useState(0);
 
   useEffect(() => {
@@ -182,6 +186,7 @@ function SwipeRow({
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     startX.current = event.clientX;
+    localX.current = event.nativeEvent.offsetX;
     startOffset.current = open ? ACTION : 0;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -195,8 +200,35 @@ function SwipeRow({
   function onPointerUp(event: PointerEvent<HTMLDivElement>) {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const next = startOffset.current + event.clientX - startX.current;
-    const shouldOpen = next > ACTION * 0.4;
+    const dx = event.clientX - startX.current;
+    if (Math.abs(dx) < 8) {
+      if (open) {
+        onClose();
+        return;
+      }
+      const width = event.currentTarget.clientWidth || 1;
+      const dateW = 62;
+      const fxW = 52;
+      const mid = Math.max((width - dateW - fxW) / 2, 1);
+      const tap = localX.current;
+      if (tap < dateW) onDate();
+      else if (tap < dateW + mid) amountRef.current?.focus();
+      else if (tap < dateW + mid + mid) priceRef.current?.focus();
+      else fxRef.current?.focus();
+      return;
+    }
+    if (dx > 8) {
+      setX(ACTION);
+      onOpen();
+      return;
+    }
+    if (dx < -8) {
+      setX(0);
+      onClose();
+      return;
+    }
+    const next = startOffset.current + dx;
+    const shouldOpen = next > ACTION / 2;
     setX(shouldOpen ? ACTION : 0);
     if (shouldOpen) onOpen();
     else onClose();
@@ -213,12 +245,8 @@ function SwipeRow({
         <TrashIcon />
       </button>
       <div
-        className="relative flex min-h-9 items-center bg-white"
+        className="relative flex min-h-9 touch-pan-y items-center bg-white"
         style={{ transform: `translateX(${x}px)` }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
       >
         <button
           type="button"
@@ -228,22 +256,32 @@ function SwipeRow({
           {formatDayMonth(entry.date)}
         </button>
         <input
+          ref={amountRef}
           value={entry.amount}
           onChange={(event) => onUpdate({ amount: event.target.value })}
           placeholder="—"
           className="min-w-0 flex-1 border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
         />
         <input
+          ref={priceRef}
           value={entry.price}
           onChange={(event) => onUpdate({ price: event.target.value })}
           placeholder="—"
           className="min-w-0 flex-1 border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
         />
         <input
+          ref={fxRef}
           value={entry.fx}
           onChange={(event) => onUpdate({ fx: event.target.value })}
           placeholder="—"
           className="w-[52px] border-l border-[#E8E8E8] bg-transparent px-1.5 py-2 text-[13px] outline-none"
+        />
+        <div
+          className="absolute inset-0"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         />
       </div>
     </div>
