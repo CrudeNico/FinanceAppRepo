@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
+  Image,
   Keyboard,
   Platform,
   Pressable,
@@ -29,6 +30,7 @@ import {
   type PricePoint,
   type RangeKey,
 } from "./assetData";
+import type { ListedStock } from "./stockList";
 
 const BLUE = "#3B82F6";
 const GREEN = "#16A34A";
@@ -36,7 +38,7 @@ const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
-export function StockContent() {
+export function StockContent({ stock }: { stock?: ListedStock }) {
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -88,17 +90,23 @@ export function StockContent() {
       keyboardDismissMode="interactive"
     >
       <View style={styles.headerRow}>
-        <View style={styles.logo}>
-          <Text style={styles.logoMark}>V</Text>
+        <View style={[styles.logo, stock?.color ? { backgroundColor: stock.color } : null]}>
+          {stock?.image ? (
+            <Image source={{ uri: stock.image }} style={styles.logoImage} />
+          ) : (
+            <Text style={styles.logoMark}>
+              {stock?.letter ?? stock?.ticker?.trim()?.[0] ?? "V"}
+            </Text>
+          )}
         </View>
         <View style={styles.headerCopy}>
           <View style={styles.metaRow}>
             <Text style={styles.meta}>
-              {ASSET.ticker} · {ASSET.exchange}
+              {stock?.ticker ?? ASSET.ticker} · {ASSET.exchange}
             </Text>
             <View style={styles.metaDot} />
           </View>
-          <Text style={styles.name}>{ASSET.name}</Text>
+          <Text style={styles.name}>{stock?.name ?? ASSET.name}</Text>
         </View>
       </View>
 
@@ -398,6 +406,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoMark: { color: "#ffffff", fontSize: 26, fontWeight: "700" },
+  logoImage: { width: 44, height: 44, borderRadius: 10 },
   headerCopy: { flex: 1, height: 44, justifyContent: "center" },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   meta: { color: MUTED, fontSize: 11, letterSpacing: 0.2 },
