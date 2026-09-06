@@ -36,6 +36,7 @@ import type { CategoryGroup } from "./cashflowCategories";
 import { loadCashflowEntries, loadCategoryGroups, saveCashflowEntries } from "./db";
 import type { CashflowEntry } from "./models";
 import type { ListedStock } from "./stockList";
+import { useTheme } from "./theme";
 
 const BLUE = "#3B82F6";
 const GREEN = "#16A34A";
@@ -44,6 +45,7 @@ const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
 export function CashflowContent({ stock }: { stock?: ListedStock }) {
+  const { colors: c } = useTheme();
   const [range, setRange] = useState<RangeKey>("1M");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -157,7 +159,7 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
   return (
     <ScrollView
       ref={scrollRef}
-      style={[styles.screen, { opacity: show ? 1 : 0 }]}
+      style={[styles.screen, { backgroundColor: c.bg, opacity: show ? 1 : 0 }]}
       contentContainerStyle={[styles.content, { paddingBottom: 24 + keyboardHeight }]}
       scrollEnabled={show && !scrubbing}
       keyboardShouldPersistTaps="handled"
@@ -186,16 +188,16 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
         </View>
         <View style={styles.headerCopy}>
           <View style={styles.metaRow}>
-            <Text style={styles.meta}>
+            <Text style={[styles.meta, { color: c.muted }]}>
               {stock?.ticker ?? ASSET.ticker}
             </Text>
-            <View style={styles.metaDot} />
+            <View style={[styles.metaDot, { backgroundColor: c.line }]} />
           </View>
-          <Text style={styles.name}>{stock?.name ?? ASSET.name}</Text>
+          <Text style={[styles.name, { color: c.ink }]}>{stock?.name ?? ASSET.name}</Text>
         </View>
       </View>
 
-      <Text style={styles.price}>
+      <Text style={[styles.price, { color: c.ink }]}>
         <Text style={styles.euro}>€</Text>
         {(shownPrice ?? 0).toFixed(2)}
       </Text>
@@ -241,8 +243,8 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
         />
       )}
 
-      <Text style={styles.section}>Your net worth</Text>
-      <View style={styles.card}>
+      <Text style={[styles.section, { color: c.ink }]}>Your net worth</Text>
+      <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         <Row label="VALUE" value={formatEuro(stats.value)} />
         <Row label="EXPENSES" value={formatEuro(stats.monthlyExpenses)} last />
       </View>
@@ -337,6 +339,7 @@ function RangeButtons({
   onPick?: () => void;
   compact?: boolean;
 }) {
+  const { colors: c } = useTheme();
   return (
     <View style={[styles.ranges, compact && styles.rangesCompact]}>
       {RANGES.map((item) => (
@@ -346,9 +349,9 @@ function RangeButtons({
             onPick?.();
             onChange(item);
           }}
-          style={[styles.range, range === item && styles.rangeOn]}
+          style={[styles.range, range === item && { backgroundColor: c.lift }]}
         >
-          <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
+          <Text style={[styles.rangeText, { color: c.muted }, range === item && { color: c.ink }]}>
             {item}
           </Text>
         </Pressable>
@@ -368,6 +371,7 @@ function ViewToggle({
   onScrubbing: (active: boolean) => void;
   onClearHover: () => void;
 }) {
+  const { colors: c } = useTheme();
   return (
     <View style={styles.viewToggle}>
       <Pressable
@@ -376,7 +380,7 @@ function ViewToggle({
           onView("graph");
         }}
         hitSlop={8}
-        style={[styles.viewBtn, view === "graph" && styles.viewBtnOn]}
+        style={[styles.viewBtn, view === "graph" && { backgroundColor: c.lift }]}
       >
         <ChartIcon />
       </Pressable>
@@ -387,7 +391,7 @@ function ViewToggle({
           onView("pie");
         }}
         hitSlop={8}
-        style={[styles.viewBtn, view === "pie" && styles.viewBtnOn]}
+        style={[styles.viewBtn, view === "pie" && { backgroundColor: c.lift }]}
       >
         <PieIcon />
       </Pressable>
@@ -404,6 +408,7 @@ function PieHintCard({
   leading?: ReactNode;
   extra?: ReactNode;
 }) {
+  const { colors: c } = useTheme();
   const income = hint?.kind === "income";
   return (
     <View style={styles.pieHintRow}>
@@ -412,11 +417,11 @@ function PieHintCard({
         {hint ? (
           <>
             <View style={[styles.pieHintChip, income ? styles.pieHintIncome : styles.pieHintExpense]}>
-              <Text style={styles.pieHintChipText}>
+              <Text style={[styles.pieHintChipText, { color: c.ink }]}>
                 {hint.name} · {Math.round(hint.pct)}%
               </Text>
             </View>
-            <Text style={styles.pieHintAmount}>{formatEuro(hint.amount)}</Text>
+            <Text style={[styles.pieHintAmount, { color: c.ink }]}>{formatEuro(hint.amount)}</Text>
           </>
         ) : null}
       </View>
@@ -550,6 +555,7 @@ function CategoryPie({
   onScrubbing?: (active: boolean) => void;
   onTap?: () => void;
 }) {
+  const { colors: c } = useTheme();
   const moved = useRef(false);
   const cx = size / 2;
   const cy = size / 2;
@@ -634,7 +640,7 @@ function CategoryPie({
     >
       <Svg width={size} height={size}>
         {paths.length === 0 ? (
-          <Circle cx={cx} cy={cy} r={radius} stroke={MUTED} strokeWidth="1.5" fill="none" />
+          <Circle cx={cx} cy={cy} r={radius} stroke={c.muted} strokeWidth="1.5" fill="none" />
         ) : (
           paths.map((slice) =>
             slice.full ? (
@@ -718,11 +724,12 @@ function pieSlice(cx: number, cy: number, radius: number, start: number, end: nu
 }
 
 function ChartIcon() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -732,18 +739,19 @@ function ChartIcon() {
 }
 
 function PieIcon() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -765,12 +773,14 @@ function Row({
   underline?: boolean;
   last?: boolean;
 }) {
+  const { colors: c } = useTheme();
   return (
     <View style={[styles.row, !last && styles.rowGap]}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={[styles.rowLabel, { color: c.muted }]}>{label}</Text>
       <Text
         style={[
           styles.rowValue,
+          { color: c.ink },
           green && styles.green,
           underline && styles.underline,
         ]}
@@ -794,6 +804,7 @@ function PriceChart({
   onHover: (point: PricePoint | null) => void;
   onScrubbing: (active: boolean) => void;
 }) {
+  const { colors: c } = useTheme();
   const [boxWidth, setBoxWidth] = useState(360);
   const width = 360;
   const height = 250;
@@ -861,7 +872,12 @@ function PriceChart({
         onHover(null);
       }}
     >
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+      <Svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
         <Defs>
           <LinearGradient id="cashFill" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={BLUE} stopOpacity="0.22" />
@@ -873,7 +889,7 @@ function PriceChart({
             key={tick}
             x={width - 4}
             y={yFor(tick) + 4}
-            fill={MUTED}
+            fill={c.muted}
             fontSize="10"
             textAnchor="end"
           >
@@ -907,14 +923,14 @@ function PriceChart({
               x2={hoverPoint.x}
               y1={16}
               y2={top + innerH}
-              stroke={INK}
+              stroke={c.ink}
               strokeWidth="1"
             />
             <Circle cx={hoverPoint.x} cy={hoverPoint.y} r={4} fill={BLUE} />
             <SvgText
               x={Math.min(Math.max(hoverPoint.x, 36), width - 70)}
               y={12}
-              fill={INK}
+              fill={c.ink}
               fontSize="10"
               textAnchor="middle"
             >

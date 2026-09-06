@@ -37,6 +37,7 @@ import {
 } from "./assetData";
 import { loadStockHistory, saveStockHistory } from "./db";
 import type { ListedStock } from "./stockList";
+import { useTheme } from "./theme";
 
 const BLUE = "#3B82F6";
 const GREEN = "#16A34A";
@@ -46,6 +47,7 @@ const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
 export function StockContent({ stock }: { stock?: ListedStock }) {
+  const { colors: c } = useTheme();
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -122,13 +124,13 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   }, []);
 
   if (!ready) {
-    return <View style={styles.screen} />;
+    return <View style={[styles.screen, { backgroundColor: c.bg }]} />;
   }
 
   return (
     <ScrollView
       ref={scrollRef}
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: c.bg }]}
       contentContainerStyle={[styles.content, { paddingBottom: 24 + keyboardHeight }]}
       scrollEnabled={!scrubbing}
       keyboardShouldPersistTaps="handled"
@@ -146,16 +148,16 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         </View>
         <View style={styles.headerCopy}>
           <View style={styles.metaRow}>
-            <Text style={styles.meta}>
+            <Text style={[styles.meta, { color: c.muted }]}>
               {stock?.ticker ?? ASSET.ticker}
             </Text>
-            <View style={styles.metaDot} />
+            <View style={[styles.metaDot, { backgroundColor: c.line }]} />
           </View>
-          <Text style={styles.name}>{stock?.name ?? ASSET.name}</Text>
+          <Text style={[styles.name, { color: c.ink }]}>{stock?.name ?? ASSET.name}</Text>
         </View>
       </View>
 
-      <Text style={styles.price}>
+      <Text style={[styles.price, { color: c.ink }]}>
         <Text style={styles.euro}>€</Text>
         {shownPrice.toFixed(2)}
       </Text>
@@ -182,9 +184,9 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
                 setHover(null);
                 setRange(item);
               }}
-              style={[styles.range, range === item && styles.rangeOn]}
+              style={[styles.range, range === item && { backgroundColor: c.lift }]}
             >
-              <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
+              <Text style={[styles.rangeText, { color: c.muted }, range === item && { color: c.ink }]}>
                 {item}
               </Text>
             </Pressable>
@@ -192,8 +194,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         </View>
       </View>
 
-      <Text style={styles.section}>Your investment</Text>
-      <View style={styles.card}>
+      <Text style={[styles.section, { color: c.ink }]}>Your investment</Text>
+      <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         <Row label="VALUE" value={formatEuro(stats.value)} />
         <Row
           label="RETURN"
@@ -241,12 +243,14 @@ function Row({
   underline?: boolean;
   last?: boolean;
 }) {
+  const { colors: c } = useTheme();
   return (
     <View style={[styles.row, !last && styles.rowGap]}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={[styles.rowLabel, { color: c.muted }]}>{label}</Text>
       <Text
         style={[
           styles.rowValue,
+          { color: c.ink },
           green && styles.green,
           underline && styles.underline,
         ]}
@@ -272,6 +276,7 @@ function PriceChart({
   onHover: (point: PricePoint | null) => void;
   onScrubbing: (active: boolean) => void;
 }) {
+  const { colors: c } = useTheme();
   const [boxWidth, setBoxWidth] = useState(360);
   const width = 360;
   const height = 250;
@@ -340,7 +345,12 @@ function PriceChart({
         onHover(null);
       }}
     >
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+      <Svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
         <Defs>
           <LinearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={BLUE} stopOpacity="0.22" />
@@ -352,7 +362,7 @@ function PriceChart({
             key={tick}
             x={width - 4}
             y={yFor(tick) + 4}
-            fill={MUTED}
+            fill={c.muted}
             fontSize="10"
             textAnchor="end"
           >
@@ -396,14 +406,14 @@ function PriceChart({
               x2={hoverPoint.x}
               y1={16}
               y2={top + innerH}
-              stroke={INK}
+              stroke={c.ink}
               strokeWidth="1"
             />
             <Circle cx={hoverPoint.x} cy={hoverPoint.y} r={4} fill={BLUE} />
             <SvgText
               x={Math.min(Math.max(hoverPoint.x, 36), width - 70)}
               y={12}
-              fill={INK}
+              fill={c.ink}
               fontSize="10"
               textAnchor="middle"
             >

@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useTheme } from "./theme";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -74,6 +75,7 @@ export function TradingCalendar({
   days: Record<string, DayEntry>;
   onDaysChange: (days: Record<string, DayEntry>) => void;
 }) {
+  const { colors: c } = useTheme();
   const now = new Date();
   const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [picked, setPicked] = useState<string | null>(null);
@@ -127,19 +129,19 @@ export function TradingCalendar({
     <View style={styles.wrap}>
       <View style={styles.monthRow}>
         <Pressable onPress={() => shiftMonth(-1)} hitSlop={10}>
-          <Text style={styles.nav}>‹</Text>
+          <Text style={[styles.nav, { color: c.ink }]}>‹</Text>
         </Pressable>
-        <Text style={styles.monthTitle}>
+        <Text style={[styles.monthTitle, { color: c.ink }]}>
           {MONTHS[cursor.month]} {cursor.year}
         </Text>
         <Pressable onPress={() => shiftMonth(1)} hitSlop={10}>
-          <Text style={styles.nav}>›</Text>
+          <Text style={[styles.nav, { color: c.ink }]}>›</Text>
         </Pressable>
       </View>
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((day) => (
-          <Text key={day} style={styles.weekday}>
+          <Text key={day} style={[styles.weekday, { color: c.muted }]}>
             {day}
           </Text>
         ))}
@@ -192,37 +194,37 @@ export function TradingCalendar({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBg}
+          style={[styles.modalBg, { backgroundColor: c.overlay }]}
         >
           <Pressable style={styles.modalFill} onPress={() => setPicked(null)}>
-            <Pressable style={styles.sheet} onPress={() => undefined}>
-              <Text style={styles.sheetTitle}>Gain / Loss</Text>
+            <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+              <Text style={[styles.sheetTitle, { color: c.ink }]}>Gain / Loss</Text>
               <View style={styles.fields}>
                 <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Gain</Text>
+                  <Text style={[styles.fieldLabel, { color: c.muted }]}>Gain</Text>
                   <TextInput
                     value={pickedEntry?.gain ?? ""}
                     onChangeText={(gain) => updatePicked({ gain })}
                     placeholder="0"
-                    placeholderTextColor={MUTED}
+                    placeholderTextColor={c.muted}
                     keyboardType="decimal-pad"
-                    style={styles.input}
+                    style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                   />
                 </View>
                 <View style={styles.field}>
-                  <Text style={styles.fieldLabel}>Loss</Text>
+                  <Text style={[styles.fieldLabel, { color: c.muted }]}>Loss</Text>
                   <TextInput
                     value={pickedEntry?.loss ?? ""}
                     onChangeText={(loss) => updatePicked({ loss })}
                     placeholder="0"
-                    placeholderTextColor={MUTED}
+                    placeholderTextColor={c.muted}
                     keyboardType="decimal-pad"
-                    style={styles.input}
+                    style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                   />
                 </View>
               </View>
-              <Pressable style={styles.doneBtn} onPress={() => setPicked(null)}>
-                <Text style={styles.doneText}>Done</Text>
+              <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={() => setPicked(null)}>
+                <Text style={[styles.doneText, { color: c.bg }]}>Done</Text>
               </Pressable>
             </Pressable>
           </Pressable>
@@ -243,6 +245,7 @@ function DayCell({
   compact?: boolean;
   onPress?: () => void;
 }) {
+  const { colors: c } = useTheme();
   if (day == null) {
     return <View style={styles.cell} />;
   }
@@ -253,14 +256,19 @@ function DayCell({
       : net < 0
         ? styles.tileLoss
         : styles.tileGain;
-  const valueColor = net == null || net === 0 ? INK : net < 0 ? RED : GREEN;
+  const valueColor = net == null || net === 0 ? c.ink : net < 0 ? RED : GREEN;
   return (
     <View style={styles.cell}>
       <Pressable
         onPress={onPress}
-        style={[styles.tile, compact ? styles.tileCompact : styles.tileTall, tint]}
+        style={[
+          styles.tile,
+          compact ? styles.tileCompact : styles.tileTall,
+          tint,
+          net == null || net === 0 ? { backgroundColor: c.card, borderColor: c.line } : null,
+        ]}
       >
-        <Text style={styles.dayNum}>{day}</Text>
+        <Text style={[styles.dayNum, { color: c.ink }]}>{day}</Text>
         {net != null ? (
           <Text style={[styles.dayValue, { color: valueColor }]}>
             {String(Math.abs(net))}

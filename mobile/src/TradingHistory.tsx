@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import type { TradeRow } from "./models";
+import { useTheme } from "./theme";
 import { useLockBackGesture } from "./useLockBackGesture";
 
 const INK = "#111111";
@@ -68,6 +69,7 @@ export function TradingHistory({
   onChange: (entries: TradeRow[]) => void;
   onAdded?: () => void;
 }) {
+  const { colors: c } = useTheme();
   const latestYear = Math.max(2026, ...entries.map((entry) => yearOf(entry.month)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [monthFor, setMonthFor] = useState<string | null>(null);
@@ -138,13 +140,13 @@ export function TradingHistory({
   return (
     <>
       <View style={styles.sectionBar}>
-        <Text style={styles.section}>History</Text>
+        <Text style={[styles.section, { color: c.ink }]}>History</Text>
         <Pressable onPress={addRow} hitSlop={10}>
-          <Text style={styles.plus}>+</Text>
+          <Text style={[styles.plus, { color: c.ink }]}>+</Text>
         </Pressable>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         {years.map((year) => {
           const open = openYears.includes(year);
           const rows = entries
@@ -153,24 +155,24 @@ export function TradingHistory({
           return (
             <View key={year} style={styles.yearBlock}>
               <Pressable onPress={() => toggleYear(year)} style={styles.yearHead}>
-                <Text style={styles.year}>{year}</Text>
+                <Text style={[styles.year, { color: c.ink }]}>{year}</Text>
                 {open ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {open ? (
                 <View
-                  style={styles.table}
+                  style={[styles.table, { borderColor: c.line }]}
                   onTouchStart={back.lock}
                   onTouchEnd={back.unlock}
                   onTouchCancel={back.unlock}
                 >
-                  <View style={styles.tableHead}>
-                    <Text style={[styles.headCell, styles.monthCol]}>Mo</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>P/L</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>D/W</Text>
-                    <Text style={[styles.headCell, styles.endCol, styles.colLine]}>End</Text>
+                  <View style={[styles.tableHead, { backgroundColor: c.table, borderBottomColor: c.line }]}>
+                    <Text style={[styles.headCell, styles.monthCol, { color: c.muted }]}>Mo</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>P/L</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>D/W</Text>
+                    <Text style={[styles.headCell, styles.endCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>End</Text>
                   </View>
                   {rows.length === 0 ? (
-                    <Text style={styles.empty}>No months yet</Text>
+                    <Text style={[styles.empty, { color: c.muted }]}>No months yet</Text>
                   ) : (
                     rows.map((entry, index) => (
                       <TradeHistoryRow
@@ -205,41 +207,41 @@ export function TradingHistory({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBg}
+          style={[styles.modalBg, { backgroundColor: c.overlay }]}
         >
           <Pressable style={styles.modalFill} onPress={() => setProfitFor(null)}>
-            <Pressable style={styles.picker} onPress={() => undefined}>
-              <Text style={styles.pickerTitle}>Profit / Loss</Text>
+            <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+              <Text style={[styles.pickerTitle, { color: c.ink }]}>Profit / Loss</Text>
               <View style={styles.flowFields}>
                 <View style={styles.flowField}>
-                  <Text style={styles.flowLabel}>Gain</Text>
+                  <Text style={[styles.flowLabel, { color: c.muted }]}>Gain</Text>
                   <TextInput
                     value={profitRow?.gain ?? ""}
                     onChangeText={(gain) => {
                       if (profitRow) update(profitRow.id, { gain });
                     }}
                     placeholder="0"
-                    placeholderTextColor={MUTED}
+                    placeholderTextColor={c.muted}
                     keyboardType="decimal-pad"
-                    style={styles.flowInput}
+                    style={[styles.flowInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                   />
                 </View>
                 <View style={styles.flowField}>
-                  <Text style={styles.flowLabel}>Loss</Text>
+                  <Text style={[styles.flowLabel, { color: c.muted }]}>Loss</Text>
                   <TextInput
                     value={profitRow?.loss ?? ""}
                     onChangeText={(loss) => {
                       if (profitRow) update(profitRow.id, { loss });
                     }}
                     placeholder="0"
-                    placeholderTextColor={MUTED}
+                    placeholderTextColor={c.muted}
                     keyboardType="decimal-pad"
-                    style={styles.flowInput}
+                    style={[styles.flowInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                   />
                 </View>
               </View>
-              <Pressable style={styles.doneBtn} onPress={() => setProfitFor(null)}>
-                <Text style={styles.doneText}>Done</Text>
+              <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={() => setProfitFor(null)}>
+                <Text style={[styles.doneText, { color: c.bg }]}>Done</Text>
               </Pressable>
             </Pressable>
           </Pressable>
@@ -254,41 +256,41 @@ export function TradingHistory({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBg}
+          style={[styles.modalBg, { backgroundColor: c.overlay }]}
         >
         <Pressable style={styles.modalFill} onPress={() => setFlowFor(null)}>
-          <Pressable style={styles.picker} onPress={() => undefined}>
-            <Text style={styles.pickerTitle}>Deposit / Withdrawal</Text>
+          <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+            <Text style={[styles.pickerTitle, { color: c.ink }]}>Deposit / Withdrawal</Text>
             <View style={styles.flowFields}>
               <View style={styles.flowField}>
-                <Text style={styles.flowLabel}>Deposit</Text>
+                <Text style={[styles.flowLabel, { color: c.muted }]}>Deposit</Text>
                 <TextInput
                   value={flowRow?.deposit ?? ""}
                   onChangeText={(deposit) => {
                     if (flowRow) update(flowRow.id, { deposit });
                   }}
                   placeholder="0"
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={c.muted}
                   keyboardType="decimal-pad"
-                  style={styles.flowInput}
+                  style={[styles.flowInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                 />
               </View>
               <View style={styles.flowField}>
-                <Text style={styles.flowLabel}>Withdrawal</Text>
+                <Text style={[styles.flowLabel, { color: c.muted }]}>Withdrawal</Text>
                 <TextInput
                   value={flowRow?.withdrawal ?? ""}
                   onChangeText={(withdrawal) => {
                     if (flowRow) update(flowRow.id, { withdrawal });
                   }}
                   placeholder="0"
-                  placeholderTextColor={MUTED}
+                  placeholderTextColor={c.muted}
                   keyboardType="decimal-pad"
-                  style={styles.flowInput}
+                  style={[styles.flowInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                 />
               </View>
             </View>
-            <Pressable style={styles.doneBtn} onPress={() => setFlowFor(null)}>
-              <Text style={styles.doneText}>Done</Text>
+            <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={() => setFlowFor(null)}>
+              <Text style={[styles.doneText, { color: c.bg }]}>Done</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -301,9 +303,9 @@ export function TradingHistory({
         animationType="fade"
         onRequestClose={() => setMonthFor(null)}
       >
-        <Pressable style={[styles.modalBg, styles.modalFill]} onPress={() => setMonthFor(null)}>
-          <Pressable style={styles.picker} onPress={() => undefined}>
-            <Text style={styles.pickerTitle}>Month</Text>
+        <Pressable style={[styles.modalBg, styles.modalFill, { backgroundColor: c.overlay }]} onPress={() => setMonthFor(null)}>
+          <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+            <Text style={[styles.pickerTitle, { color: c.ink }]}>Month</Text>
             <View style={styles.monthGrid}>
               {MONTHS.map((label, index) => {
                 const value = `${picker ? yearOf(picker.month) : latestYear}-${String(index + 1).padStart(2, "0")}`;
@@ -315,9 +317,9 @@ export function TradingHistory({
                       if (picker) update(picker.id, { month: value });
                       setMonthFor(null);
                     }}
-                    style={[styles.monthCell, on && styles.monthOn]}
+                    style={[styles.monthCell, { borderColor: c.line }, on && { backgroundColor: c.ink, borderColor: c.ink }]}
                   >
-                    <Text style={[styles.monthCellText, on && styles.monthOnText]}>{label}</Text>
+                    <Text style={[styles.monthCellText, { color: on ? c.bg : c.ink }]}>{label}</Text>
                   </Pressable>
                 );
               })}
@@ -352,6 +354,7 @@ function TradeHistoryRow({
   onProfit: () => void;
   onFlow: () => void;
 }) {
+  const { colors: c } = useTheme();
   const pan = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
   const back = useLockBackGesture();
@@ -410,36 +413,36 @@ function TradeHistoryRow({
   ).current;
 
   return (
-    <View style={[styles.rowWrap, !last && styles.rowLine]}>
+    <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
       <View style={styles.deleteLane}>
         <Pressable onPress={onDelete} style={styles.deleteBtn}>
           <TrashIcon />
         </Pressable>
       </View>
       <Animated.View
-        style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
         {...responder.panHandlers}
       >
         <Pressable onPress={open ? onClose : onMonth} style={styles.monthCol}>
-          <Text style={styles.monthText}>{monthLabel(entry.month)}</Text>
+          <Text style={[styles.monthText, { color: c.ink }]}>{monthLabel(entry.month)}</Text>
         </Pressable>
         <Pressable
           onPress={open ? onClose : onProfit}
-          style={[styles.numCol, styles.colLine, styles.flowCell]}
+          style={[styles.numCol, styles.colLine, styles.flowCell, { borderLeftColor: c.line }]}
         >
-          <Text style={[styles.flowText, profitLabel(entry) === "—" && styles.flowEmpty]}>
+          <Text style={[styles.flowText, { color: profitLabel(entry) === "—" ? c.muted : c.ink }]}>
             {profitLabel(entry)}
           </Text>
         </Pressable>
         <Pressable
           onPress={open ? onClose : onFlow}
-          style={[styles.numCol, styles.colLine, styles.flowCell]}
+          style={[styles.numCol, styles.colLine, styles.flowCell, { borderLeftColor: c.line }]}
         >
-          <Text style={[styles.flowText, flowLabel(entry) === "—" && styles.flowEmpty]}>
+          <Text style={[styles.flowText, { color: flowLabel(entry) === "—" ? c.muted : c.ink }]}>
             {flowLabel(entry)}
           </Text>
         </Pressable>
-        <Text style={[styles.endText, styles.endCol, styles.colLine]}>{end}</Text>
+        <Text style={[styles.endText, styles.endCol, styles.colLine, { color: c.ink, borderLeftColor: c.line }]}>{end}</Text>
       </Animated.View>
     </View>
   );
@@ -460,11 +463,12 @@ function TrashIcon() {
 }
 
 function ChevronDown() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m19.5 8.25-7.5 7.5-7.5-7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -474,11 +478,12 @@ function ChevronDown() {
 }
 
 function ChevronUp() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m4.5 15.75 7.5-7.5 7.5 7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"

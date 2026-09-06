@@ -3,6 +3,7 @@ import { PanResponder, Pressable, StyleSheet, TextInput, View } from "react-nati
 import Svg, { Circle, Path } from "react-native-svg";
 import { CategoryIconById } from "./categoryIcons";
 import { IONICON_OUTLINES } from "./ioniconNames";
+import { useTheme } from "./theme";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -127,6 +128,7 @@ export function IconPalette({
   color: string;
   onChange: (icon: string) => void;
 }) {
+  const { colors: c } = useTheme();
   const [query, setQuery] = useState("");
   const icons = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -157,8 +159,8 @@ export function IconPalette({
         value={query}
         onChangeText={setQuery}
         placeholder="Search icons"
-        placeholderTextColor={MUTED}
-        style={styles.search}
+        placeholderTextColor={c.muted}
+        style={[styles.search, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
         autoCorrect={false}
         autoCapitalize="none"
       />
@@ -168,7 +170,11 @@ export function IconPalette({
             <Pressable
               key={icon}
               onPress={() => onChange(icon)}
-              style={[styles.iconPick, value === icon && styles.iconPickOn]}
+              style={[
+                styles.iconPick,
+                { borderColor: c.line },
+                value === icon && { borderColor: c.ink, backgroundColor: c.lift },
+              ]}
             >
               <CategoryIconById icon={icon} color={color} size={13} />
             </Pressable>

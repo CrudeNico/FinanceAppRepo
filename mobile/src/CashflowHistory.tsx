@@ -17,6 +17,7 @@ import type { CategoryGroup } from "./cashflowCategories";
 import { CategoryManager, CategoryPicker, TagIcon } from "./CashflowCategorySheet";
 import { loadCategoryGroups, saveCategoryGroups } from "./db";
 import type { CashflowEntry } from "./models";
+import { useTheme } from "./theme";
 import { useLockBackGesture } from "./useLockBackGesture";
 
 const INK = "#111111";
@@ -66,6 +67,7 @@ export function CashflowHistory({
   onAdded?: () => void;
   ready?: boolean;
 }) {
+  const { colors: c } = useTheme();
   const today = todayIso();
   const latestYear = Math.max(yearOf(today), ...entries.map((entry) => yearOf(entry.date)));
   const latestMonth = monthKey(
@@ -162,18 +164,18 @@ export function CashflowHistory({
   return (
     <>
       <View style={styles.sectionBar}>
-        <Text style={styles.section}>History</Text>
+        <Text style={[styles.section, { color: c.ink }]}>History</Text>
         <View style={styles.actions}>
           <Pressable onPress={() => setManageOpen(true)} hitSlop={10}>
             <TagIcon />
           </Pressable>
           <Pressable onPress={addRow} hitSlop={10}>
-            <Text style={styles.plus}>+</Text>
+            <Text style={[styles.plus, { color: c.ink }]}>+</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         {askStart
           ? null
           : years.map((year) => {
@@ -185,12 +187,12 @@ export function CashflowHistory({
           return (
             <View key={year} style={styles.yearBlock}>
               <Pressable onPress={() => toggleYear(year)} style={styles.yearHead}>
-                <Text style={styles.year}>{year}</Text>
+                <Text style={[styles.year, { color: c.ink }]}>{year}</Text>
                 {yearOpen ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {yearOpen
                 ? months.length === 0
-                  ? <Text style={styles.empty}>No months yet</Text>
+                  ? <Text style={[styles.empty, { color: c.muted }]}>No months yet</Text>
                   : months.map((month) => {
                       const monthOpen = openMonths.includes(month);
                       const rows = yearRows
@@ -204,22 +206,22 @@ export function CashflowHistory({
                       return (
                         <View key={month} style={styles.monthBlock}>
                           <Pressable onPress={() => toggleMonth(month)} style={styles.monthHead}>
-                            <Text style={styles.monthName}>{monthTitle(month)}</Text>
+                            <Text style={[styles.monthName, { color: c.ink }]}>{monthTitle(month)}</Text>
                             {monthOpen ? <ChevronUp /> : <ChevronDown />}
                           </Pressable>
                           {monthOpen ? (
                             <View
-                              style={styles.table}
+                              style={[styles.table, { borderColor: c.line }]}
                               onTouchStart={back.lock}
                               onTouchEnd={back.unlock}
                               onTouchCancel={back.unlock}
                             >
-                              <View style={styles.tableHead}>
-                                <Text style={[styles.headCell, styles.dateCol]}>Date</Text>
-                                <Text style={[styles.headCell, styles.itemCol, styles.colLine]}>
+                              <View style={[styles.tableHead, { backgroundColor: c.table, borderBottomColor: c.line }]}>
+                                <Text style={[styles.headCell, styles.dateCol, { color: c.muted }]}>Date</Text>
+                                <Text style={[styles.headCell, styles.itemCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>
                                   Category
                                 </Text>
-                                <Text style={[styles.headCell, styles.amtCol, styles.colLine]}>
+                                <Text style={[styles.headCell, styles.amtCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>
                                   Amt
                                 </Text>
                               </View>
@@ -256,23 +258,23 @@ export function CashflowHistory({
       <Modal visible={askStart} transparent animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBg}
+          style={[styles.modalBg, { backgroundColor: c.overlay }]}
         >
           <View style={styles.modalFill}>
-            <View style={styles.sheet}>
-              <Text style={styles.sheetTitle}>What is your starting balance?</Text>
-              <Text style={styles.fieldLabel}>Amount</Text>
+            <View style={[styles.sheet, { backgroundColor: c.modal }]}>
+              <Text style={[styles.sheetTitle, { color: c.ink }]}>What is your starting balance?</Text>
+              <Text style={[styles.fieldLabel, { color: c.muted }]}>Amount</Text>
               <TextInput
                 value={startAmount}
                 onChangeText={setStartAmount}
                 placeholder="0"
-                placeholderTextColor={MUTED}
+                placeholderTextColor={c.muted}
                 keyboardType="decimal-pad"
                 autoFocus
-                style={styles.fieldInput}
+                style={[styles.fieldInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
               />
-              <Pressable style={styles.doneBtn} onPress={confirmStart}>
-                <Text style={styles.doneText}>Add</Text>
+              <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={confirmStart}>
+                <Text style={[styles.doneText, { color: c.bg }]}>Add</Text>
               </Pressable>
             </View>
           </View>
@@ -285,8 +287,8 @@ export function CashflowHistory({
         animationType="fade"
         onRequestClose={() => setCalendarFor(null)}
       >
-        <Pressable style={styles.modalBg} onPress={() => setCalendarFor(null)}>
-          <Pressable style={styles.sheet} onPress={() => undefined}>
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
+          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             {calendarEntry ? (
               <MiniCalendar
                 value={calendarEntry.date}
@@ -352,6 +354,7 @@ function FlowRow({
   onAmount: (amount: string) => void;
   onItem: () => void;
 }) {
+  const { colors: c } = useTheme();
   const pan = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
   const back = useLockBackGesture();
@@ -413,7 +416,7 @@ function FlowRow({
   const empty = (entry.amount ?? "").trim() === "";
 
   return (
-    <View style={[styles.rowWrap, !last && styles.rowLine]}>
+    <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
       {locked ? null : (
       <View style={styles.deleteLane}>
         <Pressable onPress={onDelete} style={styles.deleteBtn}>
@@ -422,17 +425,17 @@ function FlowRow({
       </View>
       )}
       <Animated.View
-        style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
         {...(locked ? {} : responder.panHandlers)}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
-          <Text style={styles.dateText}>{formatDayMonth(entry.date)}</Text>
+          <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
         </Pressable>
         <Pressable
           onPress={locked ? undefined : open ? onClose : onItem}
-          style={[styles.itemCol, styles.colLine, styles.itemCell]}
+          style={[styles.itemCol, styles.colLine, styles.itemCell, { borderLeftColor: c.line }]}
         >
-          <Text style={[styles.itemLabel, !entry.label && styles.itemEmpty]}>
+          <Text style={[styles.itemLabel, { color: entry.label ? c.ink : c.muted }]}>
             {entry.label || "—"}
           </Text>
         </Pressable>
@@ -440,13 +443,14 @@ function FlowRow({
           value={entry.amount}
           onChangeText={onAmount}
           placeholder="—"
-          placeholderTextColor={MUTED}
+          placeholderTextColor={c.muted}
           keyboardType="decimal-pad"
           editable={!open}
           style={[
             styles.amtCol,
             styles.colLine,
             styles.amtInput,
+            { color: c.ink, borderLeftColor: c.line },
             !empty && entry.kind === "expense" && styles.amtExpense,
             !empty && entry.kind === "income" && styles.amtIncome,
           ]}
@@ -463,6 +467,7 @@ function MiniCalendar({
   value: string;
   onChange: (date: string) => void;
 }) {
+  const { colors: c } = useTheme();
   const selected = new Date(`${value}T00:00:00`);
   const [cursor, setCursor] = useState(new Date(selected));
   const year = cursor.getFullYear();
@@ -476,18 +481,18 @@ function MiniCalendar({
     <View>
       <View style={styles.calHead}>
         <Pressable onPress={() => setCursor(new Date(year, month - 1, 1))} hitSlop={8}>
-          <Text style={styles.calNav}>‹</Text>
+          <Text style={[styles.calNav, { color: c.ink }]}>‹</Text>
         </Pressable>
-        <Text style={styles.calTitle}>
+        <Text style={[styles.calTitle, { color: c.ink }]}>
           {MONTHS[month]} {year}
         </Text>
         <Pressable onPress={() => setCursor(new Date(year, month + 1, 1))} hitSlop={8}>
-          <Text style={styles.calNav}>›</Text>
+          <Text style={[styles.calNav, { color: c.ink }]}>›</Text>
         </Pressable>
       </View>
       <View style={styles.weekRow}>
         {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => (
-          <Text key={`${day}-${index}`} style={styles.weekDay}>
+          <Text key={`${day}-${index}`} style={[styles.weekDay, { color: c.muted }]}>
             {day}
           </Text>
         ))}
@@ -499,8 +504,8 @@ function MiniCalendar({
           const on = iso === value;
           return (
             <Pressable key={iso} onPress={() => onChange(iso)} style={styles.dayCell}>
-              <View style={[styles.dayInner, on && styles.dayOn]}>
-                <Text style={[styles.dayText, on && styles.dayTextOn]}>{day}</Text>
+              <View style={[styles.dayInner, on && { backgroundColor: c.ink }]}>
+                <Text style={[styles.dayText, { color: on ? c.bg : c.ink }]}>{day}</Text>
               </View>
             </Pressable>
           );
@@ -511,11 +516,12 @@ function MiniCalendar({
 }
 
 function ChevronDown() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m19.5 8.25-7.5 7.5-7.5-7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -525,11 +531,12 @@ function ChevronDown() {
 }
 
 function ChevronUp() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m4.5 15.75 7.5-7.5 7.5 7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"

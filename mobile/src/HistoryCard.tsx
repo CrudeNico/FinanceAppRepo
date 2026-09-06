@@ -16,6 +16,7 @@ import {
   yearOf,
   type HistoryEntry,
 } from "./assetData";
+import { useTheme } from "./theme";
 import { useLockBackGesture } from "./useLockBackGesture";
 
 const INK = "#111111";
@@ -34,6 +35,7 @@ export function HistoryCard({
   onChange: (entries: HistoryEntry[]) => void;
   onAdded?: () => void;
 }) {
+  const { colors: c } = useTheme();
   const latestYear = Math.max(yearOf(todayIso()), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
@@ -75,15 +77,15 @@ export function HistoryCard({
   return (
     <>
       <View style={styles.sectionBar}>
-        <Text style={styles.section}>History</Text>
+        <Text style={[styles.section, { color: c.ink }]}>History</Text>
         <View style={styles.actions}>
           <Pressable onPress={addRow} hitSlop={10} style={styles.actionBtn}>
-            <Text style={styles.plus}>+</Text>
+            <Text style={[styles.plus, { color: c.ink }]}>+</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         {years.map((year) => {
           const open = openYears.includes(year);
           const rows = entries
@@ -92,24 +94,24 @@ export function HistoryCard({
           return (
             <View key={year} style={styles.yearBlock}>
               <Pressable onPress={() => toggleYear(year)} style={styles.yearHead}>
-                <Text style={styles.year}>{year}</Text>
+                <Text style={[styles.year, { color: c.ink }]}>{year}</Text>
                 {open ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {open ? (
                 <View
-                  style={styles.table}
+                  style={[styles.table, { borderColor: c.line }]}
                   onTouchStart={back.lock}
                   onTouchEnd={back.unlock}
                   onTouchCancel={back.unlock}
                 >
-                  <View style={styles.tableHead}>
-                    <Text style={[styles.headCell, styles.dateCol]}>Date</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>Amt</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine]}>Px</Text>
-                    <Text style={[styles.headCell, styles.fxCol, styles.colLine]}>FX</Text>
+                  <View style={[styles.tableHead, { backgroundColor: c.table, borderBottomColor: c.line }]}>
+                    <Text style={[styles.headCell, styles.dateCol, { color: c.muted }]}>Date</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>Amt</Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>Px</Text>
+                    <Text style={[styles.headCell, styles.fxCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>FX</Text>
                   </View>
                   {rows.length === 0 ? (
-                    <Text style={styles.empty}>No buys yet</Text>
+                    <Text style={[styles.empty, { color: c.muted }]}>No buys yet</Text>
                   ) : (
                     rows.map((entry, index) => (
                       <HistoryRow
@@ -138,8 +140,8 @@ export function HistoryCard({
         animationType="fade"
         onRequestClose={() => setCalendarFor(null)}
       >
-        <Pressable style={styles.modalBg} onPress={() => setCalendarFor(null)}>
-          <Pressable style={styles.calendar} onPress={() => undefined}>
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
+          <Pressable style={[styles.calendar, { backgroundColor: c.modal }]} onPress={() => undefined}>
             {calendarEntry ? (
               <MiniCalendar
                 value={calendarEntry.date}
@@ -177,6 +179,7 @@ function HistoryRow({
   onDate: () => void;
   onUpdate: (patch: Partial<HistoryEntry>) => void;
 }) {
+  const { colors: c } = useTheme();
   const pan = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
   const touchX = useRef(0);
@@ -258,38 +261,38 @@ function HistoryRow({
   ).current;
 
   return (
-    <View style={[styles.rowWrap, !last && styles.rowLine]}>
+    <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
       <View style={styles.deleteLane}>
         <Pressable onPress={onDelete} style={styles.deleteBtn}>
           <TrashIcon color="#ffffff" />
         </Pressable>
       </View>
       <Animated.View
-        style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
         onLayout={(event) => {
           rowWidth.current = event.nativeEvent.layout.width;
         }}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
-          <Text style={styles.dateText}>{formatDayMonth(entry.date)}</Text>
+          <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
         </Pressable>
         <Field
           ref={amountRef}
           value={entry.amount}
           onChange={(amount) => onUpdate({ amount })}
-          style={[styles.numCol, styles.colLine]}
+          style={[styles.numCol, styles.colLine, { borderLeftColor: c.line }]}
         />
         <Field
           ref={priceRef}
           value={entry.price}
           onChange={(price) => onUpdate({ price })}
-          style={[styles.numCol, styles.colLine]}
+          style={[styles.numCol, styles.colLine, { borderLeftColor: c.line }]}
         />
         <Field
           ref={fxRef}
           value={entry.fx}
           onChange={(fx) => onUpdate({ fx })}
-          style={[styles.fxCol, styles.colLine]}
+          style={[styles.fxCol, styles.colLine, { borderLeftColor: c.line }]}
         />
         <View style={StyleSheet.absoluteFill} {...responder.panHandlers} />
       </Animated.View>
@@ -305,15 +308,16 @@ const Field = forwardRef<
     style: object | object[];
   }
 >(function Field({ value, onChange, style }, ref) {
+  const { colors: c } = useTheme();
   return (
     <TextInput
       ref={ref}
       value={value}
       onChangeText={onChange}
       placeholder="—"
-      placeholderTextColor={MUTED}
+      placeholderTextColor={c.muted}
       keyboardType="decimal-pad"
-      style={[styles.input, style]}
+      style={[styles.input, { color: c.ink }, style]}
     />
   );
 });
@@ -325,6 +329,7 @@ function MiniCalendar({
   value: string;
   onChange: (date: string) => void;
 }) {
+  const { colors: c } = useTheme();
   const selected = new Date(`${value}T00:00:00`);
   const [cursor, setCursor] = useState(new Date(selected));
   const year = cursor.getFullYear();
@@ -341,21 +346,21 @@ function MiniCalendar({
           onPress={() => setCursor(new Date(year, month - 1, 1))}
           hitSlop={8}
         >
-          <Text style={styles.calNav}>‹</Text>
+          <Text style={[styles.calNav, { color: c.ink }]}>‹</Text>
         </Pressable>
-        <Text style={styles.calTitle}>
+        <Text style={[styles.calTitle, { color: c.ink }]}>
           {MONTHS[month]} {year}
         </Text>
         <Pressable
           onPress={() => setCursor(new Date(year, month + 1, 1))}
           hitSlop={8}
         >
-          <Text style={styles.calNav}>›</Text>
+          <Text style={[styles.calNav, { color: c.ink }]}>›</Text>
         </Pressable>
       </View>
       <View style={styles.weekRow}>
         {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => (
-          <Text key={`${day}-${index}`} style={styles.weekDay}>
+          <Text key={`${day}-${index}`} style={[styles.weekDay, { color: c.muted }]}>
             {day}
           </Text>
         ))}
@@ -367,8 +372,8 @@ function MiniCalendar({
           const on = iso === value;
           return (
             <Pressable key={iso} onPress={() => onChange(iso)} style={styles.dayCell}>
-              <View style={[styles.dayInner, on && styles.dayOn]}>
-                <Text style={[styles.dayText, on && styles.dayTextOn]}>{day}</Text>
+              <View style={[styles.dayInner, on && { backgroundColor: c.ink }]}>
+                <Text style={[styles.dayText, { color: on ? c.bg : c.ink }]}>{day}</Text>
               </View>
             </Pressable>
           );
@@ -379,11 +384,12 @@ function MiniCalendar({
 }
 
 function ChevronDown() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m19.5 8.25-7.5 7.5-7.5-7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -393,11 +399,12 @@ function ChevronDown() {
 }
 
 function ChevronUp() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m4.5 15.75 7.5-7.5 7.5 7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"

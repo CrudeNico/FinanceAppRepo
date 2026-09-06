@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import Svg, {
   Circle,
@@ -7,7 +7,6 @@ import Svg, {
   Line,
   LinearGradient,
   Path,
-  Rect,
   Stop,
   Text as SvgText,
 } from "react-native-svg";
@@ -25,16 +24,20 @@ import {
   type RangeKey,
 } from "./assetData";
 import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
+import { useTheme } from "./theme";
 
-const BLUE = "#3B82F6";
+const BLUE = "#1D4ED8";
 const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 export function HomeNetWorth({
   onScrubbing,
+  onProfile,
 }: {
   onScrubbing?: (active: boolean) => void;
+  onProfile?: () => void;
 }) {
+  const { colors: c, avatar } = useTheme();
   const [range, setRange] = useState<RangeKey>("1Y");
   const [view, setView] = useState<"graph" | "pie">("graph");
   const [hover, setHover] = useState<PricePoint | null>(null);
@@ -77,12 +80,22 @@ export function HomeNetWorth({
   const pie = [
     { name: "Cashflow", color: "#3B82F6", value: Math.max(cash, 0) },
     { name: "Trading", color: "#16A34A", value: Math.max(trading, 0) },
-    { name: "Stocks", color: "#111111", value: Math.max(stocks, 0) },
+    { name: "Stocks", color: c.ink, value: Math.max(stocks, 0) },
   ];
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.price}>
+      <View style={styles.head}>
+        <Pressable onPress={onProfile}>
+          {avatar ? (
+            <Image source={{ uri: avatar }} style={styles.avatarImage} />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: c.lift, borderColor: c.line }]} />
+          )}
+        </Pressable>
+        <Text style={[styles.title, { color: c.ink }]}>Net Worth</Text>
+      </View>
+      <Text style={[styles.price, { color: c.ink }]}>
         <Text style={styles.euro}>€</Text>
         {shown.toFixed(2)}
       </Text>
@@ -117,9 +130,9 @@ export function HomeNetWorth({
                   setHover(null);
                   setRange(item);
                 }}
-                style={[styles.range, range === item && styles.rangeOn]}
+                style={[styles.range, range === item && { backgroundColor: c.lift }]}
               >
-                <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
+                <Text style={[styles.rangeText, range === item && { color: c.ink }]}>
                   {item}
                 </Text>
               </Pressable>
@@ -128,11 +141,11 @@ export function HomeNetWorth({
         ) : pieHint ? (
           <View style={styles.pieHintBox}>
             <View style={[styles.pieHintChip, chipStyle(pieHint.name)]}>
-              <Text style={styles.pieHintChipText}>
+              <Text style={[styles.pieHintChipText, { color: c.ink }]}>
                 {pieHint.name} · {Math.round(pieHint.pct)}%
               </Text>
             </View>
-            <Text style={styles.pieHintAmount}>{formatEuro(pieHint.value)}</Text>
+            <Text style={[styles.pieHintAmount, { color: c.ink }]}>{formatEuro(pieHint.value)}</Text>
           </View>
         ) : null}
         <View style={view === "pie" ? styles.pieHintToggle : styles.viewToggle}>
@@ -143,7 +156,7 @@ export function HomeNetWorth({
               setView("graph");
             }}
             hitSlop={8}
-            style={[styles.viewBtn, view === "graph" && styles.viewBtnOn]}
+            style={[styles.viewBtn, view === "graph" && { backgroundColor: c.lift }]}
           >
             <ChartIcon />
           </Pressable>
@@ -155,7 +168,7 @@ export function HomeNetWorth({
               setView("pie");
             }}
             hitSlop={8}
-            style={[styles.viewBtn, view === "pie" && styles.viewBtnOn]}
+            style={[styles.viewBtn, view === "pie" && { backgroundColor: c.lift }]}
           >
             <PieIcon />
           </Pressable>
@@ -218,9 +231,29 @@ async function loadTotals() {
   };
 }
 
+function smoothLine(points: { x: number; y: number }[]) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`;
+  }
+  return d;
+}
+
 function NetChart({
   prices,
-  current,
   hover,
   onHover,
   onScrubbing,
@@ -231,6 +264,7 @@ function NetChart({
   onHover: (point: PricePoint | null) => void;
   onScrubbing: (active: boolean) => void;
 }) {
+  const { colors: c } = useTheme();
   const [boxWidth, setBoxWidth] = useState(360);
   const width = 360;
   const height = 250;
@@ -248,14 +282,11 @@ function NetChart({
     x: left + (index / Math.max(prices.length - 1, 1)) * innerW,
     y: yFor(point.value),
   }));
-  const line = points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ");
-  const area =
-    points.length > 0
-      ? `${line} L ${left + innerW} ${top + innerH} L ${left} ${top + innerH} Z`
-      : "";
-  const currentY = yFor(current);
+  const line = smoothLine(points);
+  const last = points[points.length - 1];
+  const area = last
+    ? `${line} L ${last.x} ${top + innerH} L ${points[0].x} ${top + innerH} Z`
+    : "";
   const hoverPoint = hover ? points.find((point) => point.date === hover.date) ?? null : null;
 
   function pick(locationX: number) {
@@ -304,7 +335,7 @@ function NetChart({
             key={tick}
             x={width - 4}
             y={yFor(tick) + 4}
-            fill={MUTED}
+            fill={c.muted}
             fontSize="10"
             textAnchor="end"
           >
@@ -322,15 +353,7 @@ function NetChart({
             strokeLinecap="round"
           />
         ) : null}
-        <Line
-          x1={left}
-          x2={width - 25}
-          y1={currentY}
-          y2={currentY}
-          stroke={BLUE}
-          strokeWidth="1"
-        />
-        <Pill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
+        {last ? <Circle cx={last.x} cy={last.y} r={3.5} fill={BLUE} /> : null}
         {hoverPoint ? (
           <>
             <Line
@@ -338,14 +361,14 @@ function NetChart({
               x2={hoverPoint.x}
               y1={16}
               y2={top + innerH}
-              stroke={INK}
+              stroke={c.ink}
               strokeWidth="1"
             />
             <Circle cx={hoverPoint.x} cy={hoverPoint.y} r={4} fill={BLUE} />
             <SvgText
               x={Math.min(Math.max(hoverPoint.x, 36), width - 70)}
               y={12}
-              fill={INK}
+              fill={c.ink}
               fontSize="10"
               textAnchor="middle"
             >
@@ -373,6 +396,7 @@ function NetPie({
   onHold: (slice: { name: string; pct: number; value: number } | null) => void;
   onScrubbing?: (active: boolean) => void;
 }) {
+  const { colors: c } = useTheme();
   const size = 220;
   const cx = size / 2;
   const cy = size / 2;
@@ -432,7 +456,7 @@ function NetPie({
       >
         <Svg width={size} height={size}>
           {total === 0 ? (
-            <Circle cx={cx} cy={cy} r={radius} stroke={MUTED} strokeWidth="1.5" fill="none" />
+            <Circle cx={cx} cy={cy} r={radius} stroke={c.muted} strokeWidth="1.5" fill="none" />
           ) : (
             paths.map((slice) =>
               slice.full ? (
@@ -457,40 +481,13 @@ function piePath(cx: number, cy: number, radius: number, start: number, end: num
   return `M ${cx} ${cy} L ${x0} ${y0} A ${radius} ${radius} 0 ${large} 1 ${x1} ${y1} Z`;
 }
 
-function Pill({
-  x,
-  y,
-  label,
-  fill,
-}: {
-  x: number;
-  y: number;
-  label: string;
-  fill: string;
-}) {
-  return (
-    <>
-      <Rect x={x} y={y} width={50} height={20} rx={10} fill={fill} />
-      <SvgText
-        x={x + 25}
-        y={y + 14}
-        fill="#ffffff"
-        fontSize="10"
-        fontWeight="600"
-        textAnchor="middle"
-      >
-        {label}
-      </SvgText>
-    </>
-  );
-}
-
 function ChartIcon() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -500,18 +497,19 @@ function ChartIcon() {
 }
 
 function PieIcon() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -522,8 +520,17 @@ function PieIcon() {
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 28 },
+  head: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 10 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  avatarImage: { width: 40, height: 40, borderRadius: 20 },
+  title: { fontSize: 28, fontWeight: "600" },
   price: {
-    color: INK,
     fontSize: 52,
     fontWeight: "400",
     letterSpacing: -1.4,
@@ -540,11 +547,8 @@ const styles = StyleSheet.create({
   ranges: { flex: 1, flexDirection: "row", alignItems: "center", gap: 2 },
   viewToggle: { flexDirection: "row", alignItems: "center", gap: 4 },
   viewBtn: { padding: 6, borderRadius: 10 },
-  viewBtnOn: { backgroundColor: "#EFEFEF" },
   range: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
-  rangeOn: { backgroundColor: "#EFEFEF" },
   rangeText: { color: MUTED, fontSize: 13, fontWeight: "600" },
-  rangeTextOn: { color: INK },
   pieWrap: { marginTop: 10, alignItems: "center", minHeight: 220 },
   pieHintRow: {
     position: "relative",
@@ -573,6 +577,6 @@ const styles = StyleSheet.create({
   pieHintCash: { backgroundColor: "#BFDBFE" },
   pieHintTrading: { backgroundColor: "#BBF7D0" },
   pieHintStocks: { backgroundColor: "#E5E7EB" },
-  pieHintChipText: { color: INK, fontSize: 13, fontWeight: "600" },
-  pieHintAmount: { color: INK, fontSize: 20, fontWeight: "500", marginTop: 4 },
+  pieHintChipText: { fontSize: 13, fontWeight: "600" },
+  pieHintAmount: { fontSize: 20, fontWeight: "500", marginTop: 4 },
 });

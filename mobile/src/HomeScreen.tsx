@@ -17,14 +17,54 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
-import { deleteCard, listCards, persistLogo, upsertCard, type CardKind } from "./db";
+import { cashflowStats, stockStats, tradingStats } from "./assetData";
+import {
+  deleteCard,
+  listCards,
+  loadCashflowEntries,
+  loadStockHistory,
+  loadTradingMonths,
+  persistLogo,
+  upsertCard,
+  type CardKind,
+} from "./db";
 import { HomeNetWorth } from "./HomeNetWorth";
 import type { ListedStock } from "./stockList";
+import { useTheme } from "./theme";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RED = "#DC2626";
 const ACTION = 68;
+
+async function cardValue(kind: CardKind, id: string) {
+  if (kind === "trading") return tradingStats(await loadTradingMonths(id)).value;
+  if (kind === "stock") return stockStats(await loadStockHistory(id)).value;
+  return cashflowStats(await loadCashflowEntries(id)).value;
+}
+
+async function sectionValue(kind: CardKind) {
+  const cards = await listCards(kind);
+  const values = await Promise.all(
+    cards.filter((card) => card.saved).map((card) => cardValue(kind, card.id)),
+  );
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+async function loadSortedCards(kind: CardKind) {
+  const cards = await listCards(kind);
+  const ranked = await Promise.all(
+    cards.map(async (card) => ({
+      card,
+      value: card.saved ? await cardValue(kind, card.id) : Number.NEGATIVE_INFINITY,
+    })),
+  );
+  ranked.sort((a, b) => {
+    if (a.card.saved !== b.card.saved) return a.card.saved ? -1 : 1;
+    return b.value - a.value;
+  });
+  return ranked.map((item) => item.card);
+}
 
 export function HomeScreen({
   navigation,
@@ -32,9 +72,61 @@ export function HomeScreen({
   navigation: { navigate: (name: string, params?: object) => void };
 }) {
   const [lockScroll, setLockScroll] = useState(false);
+  const [tradeFirst, setTradeFirst] = useState(true);
+  const { colors: c } = useTheme();
+
+  useFocusEffect(
+    useCallback(() => {
+      Promise.all([sectionValue("trading"), sectionValue("stock")])
+        .then(([trading, stocks]) => setTradeFirst(trading >= stocks))
+        .catch(() => setTradeFirst(true));
+    }, []),
+  );
+
+  const trading = (
+    <CardSection
+      key="trading"
+      title="Trading"
+      kind="trading"
+      onOpenItem={(stock) =>
+        navigation.navigate("Trading", {
+          stock: {
+            id: stock.id,
+            ticker: stock.ticker,
+            name: stock.name,
+            image: stock.image ?? null,
+            letter: stock.letter ?? null,
+            color: stock.color ?? null,
+            saved: true,
+          },
+        })
+      }
+    />
+  );
+  const stocks = (
+    <CardSection
+      key="stock"
+      title="Stocks"
+      kind="stock"
+      onOpenItem={(stock) =>
+        navigation.navigate("Stock", {
+          stock: {
+            id: stock.id,
+            ticker: stock.ticker,
+            name: stock.name,
+            image: stock.image ?? null,
+            letter: stock.letter ?? null,
+            color: stock.color ?? null,
+            saved: true,
+          },
+        })
+      }
+    />
+  );
+
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: c.bgHome }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -42,7 +134,10 @@ export function HomeScreen({
         keyboardShouldPersistTaps="handled"
         scrollEnabled={!lockScroll}
       >
-        <HomeNetWorth onScrubbing={setLockScroll} />
+        <HomeNetWorth
+          onScrubbing={setLockScroll}
+          onProfile={() => navigation.navigate("Settings")}
+        />
         <CardSection
           title="Cashflow"
           kind="cashflow"
@@ -62,41 +157,9 @@ export function HomeScreen({
           }
         />
         <View style={styles.sectionGap} />
-        <CardSection
-          title="Trading"
-          kind="trading"
-          onOpenItem={(stock) =>
-            navigation.navigate("Trading", {
-              stock: {
-                id: stock.id,
-                ticker: stock.ticker,
-                name: stock.name,
-                image: stock.image ?? null,
-                letter: stock.letter ?? null,
-                color: stock.color ?? null,
-                saved: true,
-              },
-            })
-          }
-        />
+        {tradeFirst ? trading : stocks}
         <View style={styles.sectionGap} />
-        <CardSection
-          title="Stocks"
-          kind="stock"
-          onOpenItem={(stock) =>
-            navigation.navigate("Stock", {
-              stock: {
-                id: stock.id,
-                ticker: stock.ticker,
-                name: stock.name,
-                image: stock.image ?? null,
-                letter: stock.letter ?? null,
-                color: stock.color ?? null,
-                saved: true,
-              },
-            })
-          }
-        />
+        {tradeFirst ? stocks : trading}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -118,7 +181,7 @@ function CardSection({
 
   useFocusEffect(
     useCallback(() => {
-      listCards(kind).then(setItems).catch(() => setItems([]));
+      loadSortedCards(kind).then(setItems).catch(() => setItems([]));
     }, [kind]),
   );
 
@@ -150,6 +213,7 @@ function CardSection({
       if (saved) upsertCard(kind, saved);
       return next;
     });
+    loadSortedCards(kind).then(setItems).catch(() => undefined);
   }
 
   function updateItem(id: string, patch: Partial<ListedStock>) {
@@ -189,13 +253,14 @@ function CardSection({
     }
   }
 
+  const { colors: c } = useTheme();
   return (
     <View>
       <View style={styles.sectionBar}>
-        <Text style={styles.section}>{title}</Text>
+        <Text style={[styles.section, { color: c.ink }]}>{title}</Text>
         {locked ? null : (
           <Pressable onPress={addItem} hitSlop={10}>
-            <Text style={styles.plus}>+</Text>
+            <Text style={[styles.plus, { color: c.ink }]}>+</Text>
           </Pressable>
         )}
       </View>
@@ -249,6 +314,7 @@ function StockCard({
   onConfirm: () => void;
   onOpenStock: () => void;
 }) {
+  const { colors: c } = useTheme();
   const pan = useRef(new Animated.Value(0)).current;
   const offset = useRef(0);
   const openRef = useRef(onOpen);
@@ -328,7 +394,7 @@ function StockCard({
         </View>
       )}
       <Animated.View
-        style={[styles.card, { transform: [{ translateX: locked ? 0 : pan }] }]}
+        style={[styles.card, { backgroundColor: c.cardSoft, transform: [{ translateX: locked ? 0 : pan }] }]}
         {...(locked ? {} : responder.panHandlers)}
       >
         <Pressable onPress={onPickImage} style={styles.logo}>
@@ -339,8 +405,8 @@ function StockCard({
               <Text style={styles.logoMark}>{letter}</Text>
             </View>
           ) : (
-            <View style={styles.logoEmpty}>
-              <Text style={styles.logoHint}>{letter}</Text>
+            <View style={[styles.logoEmpty, { borderColor: c.line, backgroundColor: c.lift }]}>
+              <Text style={[styles.logoHint, { color: c.muted }]}>{letter}</Text>
             </View>
           )}
         </Pressable>
@@ -353,8 +419,8 @@ function StockCard({
               else onOpenStock();
             }}
           >
-            <Text style={styles.tickerInput}>{stock.ticker}</Text>
-            <Text style={styles.nameInput} numberOfLines={1}>
+            <Text style={[styles.tickerInput, { color: c.muted }]}>{stock.ticker}</Text>
+            <Text style={[styles.nameInput, { color: c.ink }]} numberOfLines={1}>
               {stock.name}
             </Text>
           </TouchableOpacity>
@@ -364,24 +430,24 @@ function StockCard({
               value={stock.ticker}
               onChangeText={(ticker) => onChange({ ticker })}
               placeholder="ABBR"
-              placeholderTextColor={MUTED}
+              placeholderTextColor={c.muted}
               autoCapitalize="characters"
-              style={styles.tickerInput}
+              style={[styles.tickerInput, { color: c.muted }]}
             />
             <TextInput
               value={stock.name}
               onChangeText={(name) => onChange({ name })}
               placeholder="Complete name"
-              placeholderTextColor={MUTED}
-              style={styles.nameInput}
+              placeholderTextColor={c.muted}
+              style={[styles.nameInput, { color: c.ink }]}
             />
           </View>
         )}
       </Animated.View>
     </View>
     {!saved ? (
-      <Pressable onPress={onConfirm} style={[styles.rowWrap, styles.card, styles.confirmCard]}>
-        <Text style={styles.confirmText}>Add</Text>
+      <Pressable onPress={onConfirm} style={[styles.rowWrap, styles.card, styles.confirmCard, { backgroundColor: c.cardSoft }]}>
+        <Text style={[styles.confirmText, { color: c.ink }]}>Add</Text>
       </Pressable>
     ) : null}
     </View>
@@ -407,7 +473,7 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingTop: 64,
+    paddingTop: 88,
     paddingBottom: 40,
   },
   sectionBar: {

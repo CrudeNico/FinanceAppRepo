@@ -15,6 +15,7 @@ import Svg, { Path } from "react-native-svg";
 import { CategoryIcon } from "./categoryIcons";
 import { DraftLooks, PALETTE_COLORS } from "./categoryPalettes";
 import type { CategoryGroup, CategoryItem, CategoryKind } from "./cashflowCategories";
+import { useTheme } from "./theme";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -43,18 +44,19 @@ function revealBlock(
 }
 
 export function TagIcon() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Path
         d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <Path
         d="M6 6h.008v.008H6V6Z"
-        stroke={INK}
+        stroke={c.ink}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -74,6 +76,7 @@ export function CategoryPicker({
   onClose: () => void;
   onPick: (item: CategoryItem, group: CategoryGroup) => void;
 }) {
+  const { colors: c } = useTheme();
   const [open, setOpen] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const scrollBoxRef = useRef<View>(null);
@@ -97,10 +100,10 @@ export function CategoryPicker({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBg}>
+      <View style={[styles.modalBg, { backgroundColor: c.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
-          <Text style={styles.title}>Category</Text>
+        <View style={[styles.sheet, { backgroundColor: c.modal }]}>
+          <Text style={[styles.title, { color: c.ink }]}>Category</Text>
           <View ref={scrollBoxRef} collapsable={false}>
           <ScrollView
             ref={scrollRef}
@@ -142,7 +145,7 @@ export function CategoryPicker({
                   >
                     {expanded ? <ChevronUp /> : <ChevronDown />}
                     <CategoryIcon group={group} />
-                    <Text style={styles.groupName}>{group.name}</Text>
+                    <Text style={[styles.groupName, { color: c.ink }]}>{group.name}</Text>
                   </Pressable>
                   {expanded
                     ? group.items.map((item) => (
@@ -154,7 +157,7 @@ export function CategoryPicker({
                           }}
                           style={styles.itemRow}
                         >
-                          <Text style={styles.itemName}>{item.name}</Text>
+                          <Text style={[styles.itemName, { color: c.ink }]}>{item.name}</Text>
                         </Pressable>
                       ))
                     : null}
@@ -180,6 +183,7 @@ export function CategoryManager({
   onChange: (groups: CategoryGroup[]) => void;
   onClose: () => void;
 }) {
+  const { colors: c } = useTheme();
   const [open, setOpen] = useState<string | null>(null);
   const [lockScroll, setLockScroll] = useState(false);
   const [keyboardH, setKeyboardH] = useState(0);
@@ -316,16 +320,17 @@ export function CategoryManager({
       <View
         style={[
           styles.modalBg,
+          { backgroundColor: c.overlay },
           keyboardH > 0 && { justifyContent: "flex-end", paddingBottom: 12 },
           keyboardH > 0 && { marginBottom: keyboardH },
         ]}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { backgroundColor: c.modal }]}>
           <View style={styles.titleRow}>
-            <Text style={styles.title}>Categories</Text>
+            <Text style={[styles.title, { color: c.ink }]}>Categories</Text>
             <Pressable onPress={addGroup} hitSlop={8}>
-              <Text style={styles.plus}>+</Text>
+              <Text style={[styles.plus, { color: c.ink }]}>+</Text>
             </Pressable>
           </View>
           <View ref={scrollBoxRef} collapsable={false}>
@@ -389,12 +394,12 @@ export function CategoryManager({
                         value={group.name}
                         onChangeText={(name) => updateGroup(group.id, { name })}
                         placeholder="Name"
-                        placeholderTextColor={MUTED}
-                        style={styles.groupInput}
+                        placeholderTextColor={c.muted}
+                        style={[styles.groupInput, { color: c.ink }]}
                         onFocus={() => revealInput(inputRefs.current[group.id])}
                       />
                     ) : (
-                      <Text style={styles.groupName}>{group.name}</Text>
+                      <Text style={[styles.groupName, { color: c.ink }]}>{group.name}</Text>
                     )}
                     {draft ? (
                       <Pressable onPress={() => confirmGroup(group)} hitSlop={8}>
@@ -402,7 +407,7 @@ export function CategoryManager({
                       </Pressable>
                     ) : null}
                     <Pressable onPress={() => askRemoveGroup(group)} hitSlop={8}>
-                      <Text style={styles.remove}>×</Text>
+                      <Text style={[styles.remove, { color: c.muted }]}>×</Text>
                     </Pressable>
                   </View>
                   {expanded ? (
@@ -421,7 +426,7 @@ export function CategoryManager({
                       <View style={styles.kindRow}>
                         <Pressable
                           onPress={() => setKind(group.id, "expense")}
-                          style={[styles.kindBtn, group.kind === "expense" && styles.kindExpense]}
+                          style={[styles.kindBtn, { borderColor: c.line }, group.kind === "expense" && styles.kindExpense]}
                         >
                           <Text
                             style={[
@@ -434,7 +439,7 @@ export function CategoryManager({
                         </Pressable>
                         <Pressable
                           onPress={() => setKind(group.id, "income")}
-                          style={[styles.kindBtn, group.kind === "income" && styles.kindIncome]}
+                          style={[styles.kindBtn, { borderColor: c.line }, group.kind === "income" && styles.kindIncome]}
                         >
                           <Text
                             style={[
@@ -454,16 +459,16 @@ export function CategoryManager({
                             }}
                             value={item.name}
                             onChangeText={(name) => updateItem(group.id, item.id, name)}
-                            style={styles.itemInput}
+                            style={[styles.itemInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
                             onFocus={() => revealInput(inputRefs.current[item.id])}
                           />
                           <Pressable onPress={() => removeItem(group.id, item.id)} hitSlop={8}>
-                            <Text style={styles.remove}>×</Text>
+                            <Text style={[styles.remove, { color: c.muted }]}>×</Text>
                           </Pressable>
                         </View>
                       ))}
                       <Pressable onPress={() => addItem(group.id)} style={styles.addItem}>
-                        <Text style={styles.addItemText}>+ Item</Text>
+                        <Text style={[styles.addItemText, { color: c.muted }]}>+ Item</Text>
                       </Pressable>
                     </View>
                   ) : null}
@@ -472,8 +477,8 @@ export function CategoryManager({
             })}
           </ScrollView>
           </View>
-          <Pressable style={styles.doneBtn} onPress={onClose}>
-            <Text style={styles.doneText}>Done</Text>
+          <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={onClose}>
+            <Text style={[styles.doneText, { color: c.bg }]}>Done</Text>
           </Pressable>
         </View>
       </View>
@@ -482,6 +487,7 @@ export function CategoryManager({
 }
 
 function CheckIcon({ ready }: { ready: boolean }) {
+  const { colors: c } = useTheme();
   return (
     <View
       style={{
@@ -492,13 +498,13 @@ function CheckIcon({ ready }: { ready: boolean }) {
         justifyContent: "center",
         backgroundColor: ready ? "#BBF7D0" : "transparent",
         borderWidth: 1.5,
-        borderColor: ready ? "#86EFAC" : MUTED,
+        borderColor: ready ? "#86EFAC" : c.muted,
       }}
     >
       <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
         <Path
           d="M7 12.5 10.5 16 17 8.5"
-          stroke={ready ? "#16A34A" : MUTED}
+          stroke={ready ? "#16A34A" : c.muted}
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -509,11 +515,12 @@ function CheckIcon({ ready }: { ready: boolean }) {
 }
 
 function ChevronDown() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m19.5 8.25-7.5 7.5-7.5-7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -523,11 +530,12 @@ function ChevronDown() {
 }
 
 function ChevronUp() {
+  const { colors: c } = useTheme();
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
       <Path
         d="m4.5 15.75 7.5-7.5 7.5 7.5"
-        stroke={MUTED}
+        stroke={c.muted}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"

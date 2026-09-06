@@ -9,6 +9,7 @@ export type CardKind = "stock" | "trading" | "cashflow";
 
 let db: SQLite.SQLiteDatabase | null = null;
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;
+let activeFile = "finance.db";
 let categoryLock: Promise<void> = Promise.resolve();
 
 function withCategoryLock<T>(fn: () => Promise<T>) {
@@ -48,15 +49,26 @@ const CASHFLOW_TABLE = `
     );
 `;
 
-export async function initDb() {
+export async function closeDb() {
+  if (opening) await opening.catch(() => undefined);
   if (db) {
+    await db.closeAsync().catch(() => undefined);
+    db = null;
+  }
+  opening = null;
+}
+
+export async function initDb(file = "finance.db") {
+  if (db && activeFile === file) {
     await db.execAsync(CASHFLOW_TABLE);
     await seedCategories(db);
     return db;
   }
+  if (db) await closeDb();
   if (opening) return opening;
   opening = (async () => {
-    const database = await SQLite.openDatabaseAsync("finance.db");
+    activeFile = file;
+    const database = await SQLite.openDatabaseAsync(file);
     await database.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -122,9 +134,13 @@ export async function initDb() {
       sort_order INTEGER NOT NULL,
       FOREIGN KEY (group_id) REFERENCES cashflow_groups(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
     db = database;
-    await seedIfNeeded(database);
+    await seedIfNeeded(database, file === "finance.db");
     await seedCategories(database);
     return database;
   })();
@@ -207,15 +223,32 @@ async function seedCategories(database: SQLite.SQLiteDatabase) {
   });
 }
 
-async function seedIfNeeded(database: SQLite.SQLiteDatabase) {
-  const row = await database.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM cards WHERE kind = 'stock'",
+async function seedIfNeeded(database: SQLite.SQLiteDatabase, seedDemoStock: boolean) {
+  if (seedDemoStock) {
+    const row = await database.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM cards WHERE kind = 'stock'",
+    );
+    if ((row?.count ?? 0) === 0) {
+      const stock = INITIAL_STOCKS[0];
+      if (stock) {
+        await upsertCard("stock", { ...stock, saved: true });
+        await saveStockHistory(stock.id, INITIAL_HISTORY);
+      }
+    }
+  }
+  const cash = await database.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM cards WHERE kind = 'cashflow'",
   );
-  if ((row?.count ?? 0) > 0) return;
-  const stock = INITIAL_STOCKS[0];
-  if (!stock) return;
-  await upsertCard("stock", { ...stock, saved: true });
-  await saveStockHistory(stock.id, INITIAL_HISTORY);
+  if ((cash?.count ?? 0) > 0) return;
+  await upsertCard("cashflow", {
+    id: "cashflow",
+    ticker: "CASH",
+    name: "Cashflow",
+    image: null,
+    letter: "C",
+    color: "#3B82F6",
+    saved: true,
+  });
 }
 
 export async function listCards(kind: CardKind): Promise<ListedStock[]> {
@@ -439,6 +472,30 @@ export async function saveCashflowEntries(cardId: string, entries: CashflowEntry
       );
     }
   });
+}
+
+export async function getSetting(key: string) {
+  const database = await getDb();
+  await database.execAsync(
+    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)",
+  );
+  const row = await database.getFirstAsync<{ value: string }>(
+    "SELECT value FROM settings WHERE key = ?",
+    key,
+  );
+  return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string) {
+  const database = await getDb();
+  await database.execAsync(
+    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)",
+  );
+  await database.runAsync(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    key,
+    value,
+  );
 }
 
 export async function persistLogo(id: string, uri: string) {
