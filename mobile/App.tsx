@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { initDb } from "./src/db";
 import { HomeScreen } from "./src/HomeScreen";
 import { StockScreen } from "./src/StockScreen";
+import { CashflowScreen } from "./src/CashflowScreen";
 import { TradingScreen } from "./src/TradingScreen";
 
 const Stack = createNativeStackNavigator();
@@ -31,6 +32,15 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen
+          name="Cashflow"
+          component={CashflowScreen}
+          options={{
+            animation: "none",
+            fullScreenGestureEnabled: false,
+            gestureResponseDistance: 20,
+          }}
+        />
         <Stack.Screen
           name="Stock"
           component={StockScreen}

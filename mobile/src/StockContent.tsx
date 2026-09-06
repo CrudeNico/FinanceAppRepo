@@ -137,7 +137,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
       <View style={styles.headerRow}>
         <View style={[styles.logo, stock?.color ? { backgroundColor: stock.color } : null]}>
           {stock?.image ? (
-            <Image source={{ uri: stock.image }} style={styles.logoImage} />
+            <Image source={{ uri: stock.image }} style={styles.logoImage} fadeDuration={0} />
           ) : (
             <Text style={styles.logoMark}>
               {stock?.letter ?? stock?.ticker?.trim()?.[0] ?? "V"}
@@ -147,7 +147,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         <View style={styles.headerCopy}>
           <View style={styles.metaRow}>
             <Text style={styles.meta}>
-              {stock?.ticker ?? ASSET.ticker} · {ASSET.exchange}
+              {stock?.ticker ?? ASSET.ticker}
             </Text>
             <View style={styles.metaDot} />
           </View>

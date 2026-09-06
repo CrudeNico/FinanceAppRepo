@@ -39,6 +39,25 @@ export function HomeScreen({
         keyboardShouldPersistTaps="handled"
       >
         <CardSection
+          title="Cashflow"
+          kind="cashflow"
+          locked
+          onOpenItem={(stock) =>
+            navigation.navigate("Cashflow", {
+              stock: {
+                id: stock.id,
+                ticker: stock.ticker,
+                name: stock.name,
+                image: stock.image ?? null,
+                letter: stock.letter ?? null,
+                color: stock.color ?? null,
+                saved: true,
+              },
+            })
+          }
+        />
+        <View style={styles.sectionGap} />
+        <CardSection
           title="Trading"
           kind="trading"
           onOpenItem={(stock) =>
@@ -81,10 +100,12 @@ export function HomeScreen({
 function CardSection({
   title,
   kind,
+  locked,
   onOpenItem,
 }: {
   title: string;
   kind: CardKind;
+  locked?: boolean;
   onOpenItem: (stock: ListedStock) => void;
 }) {
   const [items, setItems] = useState<ListedStock[]>([]);
@@ -165,19 +186,26 @@ function CardSection({
     <View>
       <View style={styles.sectionBar}>
         <Text style={styles.section}>{title}</Text>
-        <Pressable onPress={addItem} hitSlop={10}>
-          <Text style={styles.plus}>+</Text>
-        </Pressable>
+        {locked ? null : (
+          <Pressable onPress={addItem} hitSlop={10}>
+            <Text style={styles.plus}>+</Text>
+          </Pressable>
+        )}
       </View>
 
       {items.map((item) => (
         <StockCard
           key={item.id}
           stock={item}
-          open={openSwipe === item.id}
-          onOpen={() => setOpenSwipe(item.id)}
+          locked={locked}
+          open={!locked && openSwipe === item.id}
+          onOpen={() => {
+            if (!locked) setOpenSwipe(item.id);
+          }}
           onClose={() => setOpenSwipe((current) => (current === item.id ? null : current))}
-          onDelete={() => askRemove(item)}
+          onDelete={() => {
+            if (!locked) askRemove(item);
+          }}
           onPickImage={() => pickImage(item.id)}
           onChange={(patch) => updateItem(item.id, patch)}
           onConfirm={() => confirmItem(item.id)}
@@ -193,6 +221,7 @@ function CardSection({
 
 function StockCard({
   stock,
+  locked,
   open,
   onOpen,
   onClose,
@@ -203,6 +232,7 @@ function StockCard({
   onOpenStock,
 }: {
   stock: ListedStock;
+  locked?: boolean;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -225,7 +255,7 @@ function StockCard({
       offset.current = ACTION;
       Animated.timing(pan, {
         toValue: ACTION,
-        duration: 180,
+        duration: 120,
         useNativeDriver: true,
       }).start();
       openRef.current();
@@ -252,13 +282,17 @@ function StockCard({
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
       onPanResponderGrant: () => {
         pan.stopAnimation((value) => {
           offset.current = value;
         });
       },
       onPanResponderMove: (_, gesture) => {
+        if (offset.current < ACTION && gesture.dx > 8) {
+          snap(true);
+          return;
+        }
         pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
       },
       onPanResponderRelease: (_, gesture) => {
@@ -267,7 +301,7 @@ function StockCard({
           snap(false);
           return;
         }
-        if (gesture.dx > 6 || gesture.vx > 0.08) snap(true);
+        if (gesture.dx > 4 || gesture.vx > 0.04) snap(true);
         else snap(false);
       },
     }),
@@ -279,14 +313,16 @@ function StockCard({
   return (
     <View>
     <View style={styles.rowWrap}>
-      <View style={styles.deleteLane}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon />
-        </Pressable>
-      </View>
+      {locked ? null : (
+        <View style={styles.deleteLane}>
+          <Pressable onPress={onDelete} style={styles.deleteBtn}>
+            <TrashIcon />
+          </Pressable>
+        </View>
+      )}
       <Animated.View
-        style={[styles.card, { transform: [{ translateX: pan }] }]}
-        {...responder.panHandlers}
+        style={[styles.card, { transform: [{ translateX: locked ? 0 : pan }] }]}
+        {...(locked ? {} : responder.panHandlers)}
       >
         <Pressable onPress={onPickImage} style={styles.logo}>
           {stock.image ? (

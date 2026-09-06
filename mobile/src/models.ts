@@ -11,3 +11,11 @@ export type DayEntry = {
   gain: string;
   loss: string;
 };
+
+export type CashflowEntry = {
+  id: string;
+  date: string;
+  kind: "income" | "expense";
+  amount: string;
+  label: string;
+};

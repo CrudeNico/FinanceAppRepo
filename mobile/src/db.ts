@@ -1,16 +1,59 @@
 import { Directory, File, Paths } from "expo-file-system";
 import * as SQLite from "expo-sqlite";
 import { INITIAL_HISTORY, type HistoryEntry } from "./assetData";
-import type { DayEntry, TradeRow } from "./models";
+import { DEFAULT_CATEGORY_GROUPS, type CategoryGroup } from "./cashflowCategories";
+import type { CashflowEntry, DayEntry, TradeRow } from "./models";
 import { INITIAL_STOCKS, type ListedStock } from "./stockList";
 
-export type CardKind = "stock" | "trading";
+export type CardKind = "stock" | "trading" | "cashflow";
 
 let db: SQLite.SQLiteDatabase | null = null;
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;
+let categoryLock: Promise<void> = Promise.resolve();
+
+function withCategoryLock<T>(fn: () => Promise<T>) {
+  const run = categoryLock.then(fn, fn);
+  categoryLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+const CASHFLOW_TABLE = `
+    CREATE TABLE IF NOT EXISTS cashflow_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      card_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      amount TEXT NOT NULL,
+      label TEXT NOT NULL,
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS cashflow_groups (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      icon TEXT NOT NULL DEFAULT 'other',
+      color TEXT NOT NULL DEFAULT '#6B7280',
+      saved INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cashflow_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      group_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      FOREIGN KEY (group_id) REFERENCES cashflow_groups(id) ON DELETE CASCADE
+    );
+`;
 
 export async function initDb() {
-  if (db) return db;
+  if (db) {
+    await db.execAsync(CASHFLOW_TABLE);
+    await seedCategories(db);
+    return db;
+  }
   if (opening) return opening;
   opening = (async () => {
     const database = await SQLite.openDatabaseAsync("finance.db");
@@ -54,9 +97,35 @@ export async function initDb() {
       PRIMARY KEY (card_id, date),
       FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS cashflow_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      card_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      amount TEXT NOT NULL,
+      label TEXT NOT NULL,
+      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS cashflow_groups (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      icon TEXT NOT NULL DEFAULT 'other',
+      color TEXT NOT NULL DEFAULT '#6B7280',
+      saved INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS cashflow_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      group_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      FOREIGN KEY (group_id) REFERENCES cashflow_groups(id) ON DELETE CASCADE
+    );
   `);
     db = database;
     await seedIfNeeded(database);
+    await seedCategories(database);
     return database;
   })();
   try {
@@ -68,6 +137,74 @@ export async function initDb() {
 
 async function getDb() {
   return db ?? (await initDb());
+}
+
+async function migrateCategoryColumns(database: SQLite.SQLiteDatabase) {
+  const cols = await database.getAllAsync<{ name: string }>("PRAGMA table_info(cashflow_groups)");
+  const names = new Set(cols.map((col) => col.name));
+  if (!names.has("icon")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN icon TEXT");
+  if (!names.has("color")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN color TEXT");
+  if (!names.has("saved")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN saved INTEGER");
+  for (const group of DEFAULT_CATEGORY_GROUPS) {
+    await database.runAsync(
+      "UPDATE cashflow_groups SET icon = COALESCE(NULLIF(icon, ''), ?), color = COALESCE(NULLIF(color, ''), ?), saved = COALESCE(saved, 1) WHERE id = ?",
+      group.icon,
+      group.color,
+      group.id,
+    );
+  }
+  await database.runAsync(
+    "UPDATE cashflow_groups SET icon = COALESCE(NULLIF(icon, ''), 'other'), color = COALESCE(NULLIF(color, ''), '#6B7280'), saved = COALESCE(saved, 1)",
+  );
+}
+
+async function seedCategories(database: SQLite.SQLiteDatabase) {
+  await withCategoryLock(async () => {
+  await migrateCategoryColumns(database);
+  const row = await database.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM cashflow_groups",
+  );
+  if ((row?.count ?? 0) > 0) {
+    const items = await database.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM cashflow_items",
+    );
+    if ((items?.count ?? 0) === 0) {
+      for (const group of DEFAULT_CATEGORY_GROUPS) {
+        for (const [itemIndex, item] of group.items.entries()) {
+          await database.runAsync(
+            "INSERT OR IGNORE INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
+            item.id,
+            group.id,
+            item.name,
+            itemIndex,
+          );
+        }
+      }
+    }
+    return;
+  }
+  for (const [groupIndex, group] of DEFAULT_CATEGORY_GROUPS.entries()) {
+    await database.runAsync(
+      "INSERT INTO cashflow_groups (id, name, kind, icon, color, saved, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      group.id,
+      group.name,
+      group.kind,
+      group.icon,
+      group.color,
+      1,
+      groupIndex,
+    );
+    for (const [itemIndex, item] of group.items.entries()) {
+      await database.runAsync(
+        "INSERT INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
+        item.id,
+        group.id,
+        item.name,
+        itemIndex,
+      );
+    }
+  }
+  });
 }
 
 async function seedIfNeeded(database: SQLite.SQLiteDatabase) {
@@ -206,6 +343,99 @@ export async function saveTradingDays(cardId: string, days: Record<string, DayEn
         date,
         entry.gain,
         entry.loss,
+      );
+    }
+  });
+}
+
+export async function loadCashflowEntries(cardId: string): Promise<CashflowEntry[]> {
+  const database = await getDb();
+  return database.getAllAsync<CashflowEntry>(
+    "SELECT id, date, kind, amount, label FROM cashflow_entries WHERE card_id = ? ORDER BY date DESC",
+    cardId,
+  );
+}
+
+export async function loadCategoryGroups(): Promise<CategoryGroup[]> {
+  const database = await getDb();
+  await withCategoryLock(() => migrateCategoryColumns(database));
+  const groups = await database.getAllAsync<{
+    id: string;
+    name: string;
+    kind: "income" | "expense";
+    icon: string | null;
+    color: string | null;
+    saved: number | null;
+    sort_order: number;
+  }>("SELECT id, name, kind, icon, color, saved, sort_order FROM cashflow_groups ORDER BY sort_order ASC");
+  const items = await database.getAllAsync<{
+    id: string;
+    group_id: string;
+    name: string;
+    sort_order: number;
+  }>("SELECT id, group_id, name, sort_order FROM cashflow_items ORDER BY sort_order ASC");
+  const defaults = new Map(DEFAULT_CATEGORY_GROUPS.map((group) => [group.id, group]));
+  return groups.map((group) => {
+    const preset = defaults.get(group.id);
+    return {
+      id: group.id,
+      name: group.name,
+      kind: group.kind,
+      icon: group.icon || preset?.icon || "other",
+      color: group.color || preset?.color || "#6B7280",
+      saved: (group.saved ?? 1) === 1,
+      items: items
+        .filter((item) => item.group_id === group.id)
+        .map((item) => ({ id: item.id, name: item.name })),
+    };
+  });
+}
+
+export async function saveCategoryGroups(groups: CategoryGroup[]) {
+  const database = await getDb();
+  await withCategoryLock(async () => {
+  await migrateCategoryColumns(database);
+  await database.withTransactionAsync(async () => {
+    await database.runAsync("DELETE FROM cashflow_items");
+    await database.runAsync("DELETE FROM cashflow_groups");
+    for (const [groupIndex, group] of groups.entries()) {
+      await database.runAsync(
+        "INSERT INTO cashflow_groups (id, name, kind, icon, color, saved, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        group.id,
+        group.name ?? "",
+        group.kind ?? "expense",
+        group.icon ?? "other",
+        group.color ?? "#6B7280",
+        group.saved === false ? 0 : 1,
+        groupIndex,
+      );
+      for (const [itemIndex, item] of (group.items ?? []).entries()) {
+        await database.runAsync(
+          "INSERT INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
+          item.id,
+          group.id,
+          item.name ?? "",
+          itemIndex,
+        );
+      }
+    }
+  });
+  });
+}
+
+export async function saveCashflowEntries(cardId: string, entries: CashflowEntry[]) {
+  const database = await getDb();
+  await database.withTransactionAsync(async () => {
+    await database.runAsync("DELETE FROM cashflow_entries WHERE card_id = ?", cardId);
+    for (const entry of entries) {
+      await database.runAsync(
+        "INSERT INTO cashflow_entries (id, card_id, date, kind, amount, label) VALUES (?, ?, ?, ?, ?, ?)",
+        entry.id ?? `c${Date.now()}`,
+        cardId,
+        entry.date ?? "",
+        entry.kind ?? "expense",
+        entry.amount ?? "",
+        entry.label ?? "",
       );
     }
   });

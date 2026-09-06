@@ -146,6 +146,42 @@ export function tradingStats(entries: import("./models").TradeRow[]) {
   return { value: running, returnAmount: profit, returnPct, prices };
 }
 
+function isStartingBalance(entry: import("./models").CashflowEntry) {
+  return entry.id === "c-start" || entry.label === "Starting balance";
+}
+
+export function cashflowStats(entries: import("./models").CashflowEntry[]) {
+  const start = entries.find(isStartingBalance);
+  const rest = entries
+    .filter((entry) => !isStartingBalance(entry) && entry.amount.trim() !== "")
+    .sort((a, b) => {
+      const byDate = a.date.localeCompare(b.date);
+      return byDate !== 0 ? byDate : a.id.localeCompare(b.id);
+    });
+
+  let running = start ? toAmount(start.amount) : 0;
+  let expenses = 0;
+  const expenseMonths = new Set<string>();
+  const prices: PricePoint[] = [];
+  if (start && start.amount.trim() !== "") {
+    prices.push({ date: start.date, value: running });
+  }
+  rest.forEach((entry) => {
+    const amount = toAmount(entry.amount);
+    if (entry.kind === "expense") {
+      expenses += amount;
+      expenseMonths.add(entry.date.slice(0, 7));
+      running -= amount;
+    } else {
+      running += amount;
+    }
+    prices.push({ date: entry.date, value: running });
+  });
+  const monthCount = Math.max(expenseMonths.size, 1);
+  const monthlyExpenses = expenses / monthCount;
+  return { value: running, expenses, monthlyExpenses, prices };
+}
+
 export function todayIso() {
   const date = new Date();
   const month = String(date.getMonth() + 1).padStart(2, "0");

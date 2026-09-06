@@ -52,6 +52,7 @@ export function HistoryCard({
   }
 
   function addRow() {
+    if (entries.some((entry) => entry.amount.trim() === "" || entry.price.trim() === "")) return;
     const id = `h${Date.now()}`;
     onChange([{ id, date: todayIso(), amount: "", price: "", fx: "" }, ...entries]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));

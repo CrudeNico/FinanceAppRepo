@@ -103,10 +103,19 @@ export function TradingHistory({
     );
   }
 
+  function monthComplete(entry: TradeRow) {
+    const profitDone = entry.gain.trim() !== "" || entry.loss.trim() !== "";
+    const flowDone = entry.deposit.trim() !== "" || entry.withdrawal.trim() !== "";
+    return profitDone && flowDone;
+  }
+
   function addRow() {
+    if (entries.some((entry) => !monthComplete(entry))) return;
+    const month = todayMonth();
+    if (entries.some((entry) => entry.month === month)) return;
     const id = `t${Date.now()}`;
     onChange([
-      { id, month: todayMonth(), gain: "", loss: "", deposit: "", withdrawal: "" },
+      { id, month, gain: "", loss: "", deposit: "", withdrawal: "" },
       ...entries,
     ]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
