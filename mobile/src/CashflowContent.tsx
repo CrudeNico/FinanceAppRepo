@@ -386,7 +386,7 @@ function PieHintCard({
           </>
         ) : null}
       </View>
-      {extra}
+      {extra ? <View style={styles.pieHintToggle}>{extra}</View> : null}
     </View>
   );
 }
@@ -986,14 +986,21 @@ const styles = StyleSheet.create({
   pieChart: { alignItems: "center" },
   pieCaption: { color: MUTED, fontSize: 11, marginTop: 0 },
   pieHintRow: {
-    flexDirection: "row",
+    position: "relative",
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 4,
     minHeight: 52,
   },
   pieHintBox: {
-    flex: 1,
     alignItems: "center",
+  },
+  pieHintToggle: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
   },
   pieHintChip: {
     alignSelf: "center",
