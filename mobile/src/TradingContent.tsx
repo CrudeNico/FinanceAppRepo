@@ -24,14 +24,18 @@ import { TradingCalendar } from "./TradingCalendar";
 import { TradingHistory } from "./TradingHistory";
 import {
   ASSET,
+  chartScale,
+  filterSeries,
   formatChartDate,
   formatEuro,
-  rangeChange,
   rangePeriodLabel,
-  seriesFor,
+  seriesChange,
+  tradingStats,
   type PricePoint,
   type RangeKey,
 } from "./assetData";
+import { loadTradingDays, loadTradingMonths, saveTradingDays, saveTradingMonths } from "./db";
+import type { DayEntry, TradeRow } from "./models";
 import type { ListedStock } from "./stockList";
 
 const BLUE = "#3B82F6";
@@ -51,13 +55,54 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
   const scrollRef = useRef<ScrollView>(null);
   const historyOffset = useRef({ y: 0, height: 0 });
   const revealAfterLayout = useRef(false);
-  const prices = useMemo(() => seriesFor(range), [range]);
-  const change = useMemo(() => rangeChange(range), [range]);
+  const [ready, setReady] = useState(false);
+  const [entries, setEntries] = useState<TradeRow[]>([]);
+  const [days, setDays] = useState<Record<string, DayEntry>>({});
   const [monthTotal, setMonthTotal] = useState(0);
-  const shownPrice = hover?.value ?? ASSET.price;
+  const stats = useMemo(() => tradingStats(entries), [entries]);
+  const prices = useMemo(() => filterSeries(stats.prices, range), [stats.prices, range]);
+  const change = useMemo(() => seriesChange(prices), [prices]);
+  const shownPrice = hover?.value ?? stats.value;
   const up = change.amount >= 0;
-  const monthPct = ASSET.value === 0 ? 0 : (monthTotal / ASSET.value) * 100;
+  const monthPct = stats.value === 0 ? 0 : (monthTotal / stats.value) * 100;
   const monthUp = monthTotal >= 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    if (!stock?.id) {
+      setEntries([]);
+      setDays({});
+      setReady(true);
+      return;
+    }
+    Promise.all([loadTradingMonths(stock.id), loadTradingDays(stock.id)])
+      .then(([months, calendar]) => {
+        if (cancelled) return;
+        setEntries(months);
+        setDays(calendar);
+        setReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEntries([]);
+        setDays({});
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stock?.id]);
+
+  function persistMonths(next: TradeRow[]) {
+    setEntries(next);
+    if (stock?.id) saveTradingMonths(stock.id, next);
+  }
+
+  function persistDays(next: Record<string, DayEntry>) {
+    setDays(next);
+    if (stock?.id) saveTradingDays(stock.id, next);
+  }
 
   const viewToggle = (
     <View style={styles.viewToggle}>
@@ -115,6 +160,10 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
     };
   }, []);
 
+  if (!ready) {
+    return <View style={styles.screen} />;
+  }
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -163,13 +212,18 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
       {view === "graph" ? (
         <PriceChart
           prices={prices}
-          current={ASSET.price}
+          current={stats.value}
           hover={hover}
           onHover={setHover}
           onScrubbing={setScrubbing}
         />
       ) : (
-        <TradingCalendar toolbar={viewToggle} onMonthTotal={setMonthTotal} />
+        <TradingCalendar
+          toolbar={viewToggle}
+          onMonthTotal={setMonthTotal}
+          days={days}
+          onDaysChange={persistDays}
+        />
       )}
 
       {view === "graph" ? (
@@ -196,11 +250,11 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
 
       <Text style={styles.section}>Your investment</Text>
       <View style={styles.card}>
-        <Row label="VALUE" value={formatEuro(ASSET.value)} />
+        <Row label="VALUE" value={formatEuro(stats.value)} />
         <Row
           label="RETURN"
-          value={`+${formatEuro(ASSET.returnAmount)} (${ASSET.returnPct.toFixed(2)}%)`}
-          green
+          value={`${stats.returnAmount >= 0 ? "+" : ""}${formatEuro(stats.returnAmount)} (${stats.returnPct.toFixed(2)}%)`}
+          green={stats.returnAmount >= 0}
           last
         />
       </View>
@@ -218,6 +272,8 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
         }}
       >
         <TradingHistory
+          entries={entries}
+          onChange={persistMonths}
           onAdded={() => {
             revealAfterLayout.current = true;
           }}
@@ -277,8 +333,7 @@ function PriceChart({
   const top = 22;
   const bottom = 10;
   const values = prices.map((point) => point.value);
-  const min = Math.min(136, ...values) - 2;
-  const max = Math.max(168, ...values) + 2;
+  const { min, max, ticks } = chartScale(values);
   const innerW = width - left - right;
   const innerH = height - top - bottom;
 
@@ -293,9 +348,11 @@ function PriceChart({
   const line = points
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
-  const area = `${line} L ${left + innerW} ${top + innerH} L ${left} ${top + innerH} Z`;
+  const area =
+    points.length > 0
+      ? `${line} L ${left + innerW} ${top + innerH} L ${left} ${top + innerH} Z`
+      : "";
 
-  const ticks = [136, 140, 144, 148, 156, 160, 164];
   const currentY = yFor(current);
   const hoverPoint = hover
     ? points.find((point) => point.date === hover.date) ?? null
@@ -354,15 +411,17 @@ function PriceChart({
             {tick.toFixed(2)}
           </SvgText>
         ))}
-        <Path d={area} fill="url(#fill)" />
-        <Path
-          d={line}
-          fill="none"
-          stroke={BLUE}
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+        {area ? <Path d={area} fill="url(#fill)" /> : null}
+        {line ? (
+          <Path
+            d={line}
+            fill="none"
+            stroke={BLUE}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : null}
         <Line
           x1={left}
           x2={width - 25}

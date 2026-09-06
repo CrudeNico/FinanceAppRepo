@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,25 +12,22 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import type { TradeRow } from "./models";
+import { useLockBackGesture } from "./useLockBackGesture";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
 const LINE = "#E8E8E8";
+const RED = "#DC2626";
+const ACTION = 68;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-type TradeRow = {
-  id: string;
-  month: string;
-  gain: string;
-  loss: string;
-  deposit: string;
-  withdrawal: string;
-};
+export type { TradeRow };
 
-const INITIAL: TradeRow[] = [
-  { id: "t1", month: "2026-08", gain: "120", loss: "", deposit: "500", withdrawal: "" },
-  { id: "t2", month: "2026-07", gain: "80", loss: "", deposit: "", withdrawal: "" },
-];
+function todayMonth() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function yearOf(month: string) {
   return Number(month.slice(0, 4));
@@ -60,13 +59,22 @@ function flowLabel(entry: TradeRow) {
   return netLabel(entry.deposit, entry.withdrawal);
 }
 
-export function TradingHistory({ onAdded }: { onAdded?: () => void }) {
-  const [entries, setEntries] = useState<TradeRow[]>(INITIAL);
+export function TradingHistory({
+  entries,
+  onChange,
+  onAdded,
+}: {
+  entries: TradeRow[];
+  onChange: (entries: TradeRow[]) => void;
+  onAdded?: () => void;
+}) {
   const latestYear = Math.max(2026, ...entries.map((entry) => yearOf(entry.month)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [monthFor, setMonthFor] = useState<string | null>(null);
   const [flowFor, setFlowFor] = useState<string | null>(null);
   const [profitFor, setProfitFor] = useState<string | null>(null);
+  const [openSwipe, setOpenSwipe] = useState<string | null>(null);
+  const back = useLockBackGesture();
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.month)));
@@ -97,18 +105,21 @@ export function TradingHistory({ onAdded }: { onAdded?: () => void }) {
 
   function addRow() {
     const id = `t${Date.now()}`;
-    setEntries((current) => [
-      { id, month: "2026-09", gain: "", loss: "", deposit: "", withdrawal: "" },
-      ...current,
+    onChange([
+      { id, month: todayMonth(), gain: "", loss: "", deposit: "", withdrawal: "" },
+      ...entries,
     ]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     onAdded?.();
   }
 
   function update(id: string, patch: Partial<TradeRow>) {
-    setEntries((current) =>
-      current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
-    );
+    onChange(entries.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
+  }
+
+  function remove(id: string) {
+    onChange(entries.filter((entry) => entry.id !== id));
+    setOpenSwipe(null);
   }
 
   const picker = entries.find((entry) => entry.id === monthFor) ?? null;
@@ -137,7 +148,12 @@ export function TradingHistory({ onAdded }: { onAdded?: () => void }) {
                 {open ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {open ? (
-                <View style={styles.table}>
+                <View
+                  style={styles.table}
+                  onTouchStart={back.lock}
+                  onTouchEnd={back.unlock}
+                  onTouchCancel={back.unlock}
+                >
                   <View style={styles.tableHead}>
                     <Text style={[styles.headCell, styles.monthCol]}>Mo</Text>
                     <Text style={[styles.headCell, styles.numCol, styles.colLine]}>P/L</Text>
@@ -148,43 +164,21 @@ export function TradingHistory({ onAdded }: { onAdded?: () => void }) {
                     <Text style={styles.empty}>No months yet</Text>
                   ) : (
                     rows.map((entry, index) => (
-                      <View
+                      <TradeHistoryRow
                         key={entry.id}
-                        style={[styles.tableRow, index < rows.length - 1 && styles.rowLine]}
-                      >
-                        <Pressable onPress={() => setMonthFor(entry.id)} style={styles.monthCol}>
-                          <Text style={styles.monthText}>{monthLabel(entry.month)}</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => setProfitFor(entry.id)}
-                          style={[styles.numCol, styles.colLine, styles.flowCell]}
-                        >
-                          <Text
-                            style={[
-                              styles.flowText,
-                              profitLabel(entry) === "—" && styles.flowEmpty,
-                            ]}
-                          >
-                            {profitLabel(entry)}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => setFlowFor(entry.id)}
-                          style={[styles.numCol, styles.colLine, styles.flowCell]}
-                        >
-                          <Text
-                            style={[
-                              styles.flowText,
-                              flowLabel(entry) === "—" && styles.flowEmpty,
-                            ]}
-                          >
-                            {flowLabel(entry)}
-                          </Text>
-                        </Pressable>
-                        <Text style={[styles.endText, styles.endCol, styles.colLine]}>
-                          {endings[entry.id]?.toFixed(2) ?? "0.00"}
-                        </Text>
-                      </View>
+                        entry={entry}
+                        end={endings[entry.id]?.toFixed(2) ?? "0.00"}
+                        last={index === rows.length - 1}
+                        open={openSwipe === entry.id}
+                        onOpen={() => setOpenSwipe(entry.id)}
+                        onClose={() =>
+                          setOpenSwipe((current) => (current === entry.id ? null : current))
+                        }
+                        onDelete={() => remove(entry.id)}
+                        onMonth={() => setMonthFor(entry.id)}
+                        onProfit={() => setProfitFor(entry.id)}
+                        onFlow={() => setFlowFor(entry.id)}
+                      />
                     ))
                   )}
                 </View>
@@ -326,6 +320,136 @@ export function TradingHistory({ onAdded }: { onAdded?: () => void }) {
   );
 }
 
+function TradeHistoryRow({
+  entry,
+  end,
+  last,
+  open,
+  onOpen,
+  onClose,
+  onDelete,
+  onMonth,
+  onProfit,
+  onFlow,
+}: {
+  entry: TradeRow;
+  end: string;
+  last: boolean;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onDelete: () => void;
+  onMonth: () => void;
+  onProfit: () => void;
+  onFlow: () => void;
+}) {
+  const pan = useRef(new Animated.Value(0)).current;
+  const offset = useRef(0);
+  const back = useLockBackGesture();
+  const openRef = useRef(onOpen);
+  const closeRef = useRef(onClose);
+  openRef.current = onOpen;
+  closeRef.current = onClose;
+
+  function snap(shouldOpen: boolean) {
+    const toValue = shouldOpen ? ACTION : 0;
+    offset.current = toValue;
+    Animated.timing(pan, {
+      toValue,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+    if (shouldOpen) openRef.current();
+    else closeRef.current();
+  }
+
+  useEffect(() => {
+    if (!open) {
+      offset.current = 0;
+      pan.setValue(0);
+    }
+  }, [open, pan]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        back.lock();
+        pan.stopAnimation((value) => {
+          offset.current = value;
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        back.unlock();
+        const goingLeft = gesture.dx < -4 || gesture.vx < -0.05;
+        if (goingLeft) {
+          snap(false);
+          return;
+        }
+        if (gesture.dx > 6 || gesture.vx > 0.08) snap(true);
+        else snap(false);
+      },
+      onPanResponderTerminate: () => {
+        back.unlock();
+      },
+    }),
+  ).current;
+
+  return (
+    <View style={[styles.rowWrap, !last && styles.rowLine]}>
+      <View style={styles.deleteLane}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon />
+        </Pressable>
+      </View>
+      <Animated.View
+        style={[styles.tableRow, { transform: [{ translateX: pan }] }]}
+        {...responder.panHandlers}
+      >
+        <Pressable onPress={open ? onClose : onMonth} style={styles.monthCol}>
+          <Text style={styles.monthText}>{monthLabel(entry.month)}</Text>
+        </Pressable>
+        <Pressable
+          onPress={open ? onClose : onProfit}
+          style={[styles.numCol, styles.colLine, styles.flowCell]}
+        >
+          <Text style={[styles.flowText, profitLabel(entry) === "—" && styles.flowEmpty]}>
+            {profitLabel(entry)}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={open ? onClose : onFlow}
+          style={[styles.numCol, styles.colLine, styles.flowCell]}
+        >
+          <Text style={[styles.flowText, flowLabel(entry) === "—" && styles.flowEmpty]}>
+            {flowLabel(entry)}
+          </Text>
+        </Pressable>
+        <Text style={[styles.endText, styles.endCol, styles.colLine]}>{end}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+        stroke="#ffffff"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 function ChevronDown() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -399,7 +523,29 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
   },
-  tableRow: { flexDirection: "row", alignItems: "center", minHeight: 36 },
+  rowWrap: { position: "relative", overflow: "hidden" },
+  deleteLane: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: ACTION,
+    backgroundColor: RED,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtn: {
+    width: ACTION,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 36,
+    backgroundColor: "#ffffff",
+  },
   rowLine: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: LINE,

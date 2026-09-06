@@ -16,7 +16,8 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
-import { INITIAL_STOCKS, type ListedStock } from "./stockList";
+import { deleteCard, listCards, persistLogo, upsertCard, type CardKind } from "./db";
+import type { ListedStock } from "./stockList";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -39,12 +40,38 @@ export function HomeScreen({
       >
         <CardSection
           title="Trading"
-          onOpenItem={(stock) => navigation.navigate("Trading", { stock })}
+          kind="trading"
+          onOpenItem={(stock) =>
+            navigation.navigate("Trading", {
+              stock: {
+                id: stock.id,
+                ticker: stock.ticker,
+                name: stock.name,
+                image: stock.image ?? null,
+                letter: stock.letter ?? null,
+                color: stock.color ?? null,
+                saved: true,
+              },
+            })
+          }
         />
         <View style={styles.sectionGap} />
         <CardSection
           title="Stocks"
-          onOpenItem={(stock) => navigation.navigate("Stock", { stock })}
+          kind="stock"
+          onOpenItem={(stock) =>
+            navigation.navigate("Stock", {
+              stock: {
+                id: stock.id,
+                ticker: stock.ticker,
+                name: stock.name,
+                image: stock.image ?? null,
+                letter: stock.letter ?? null,
+                color: stock.color ?? null,
+                saved: true,
+              },
+            })
+          }
         />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -53,13 +80,19 @@ export function HomeScreen({
 
 function CardSection({
   title,
+  kind,
   onOpenItem,
 }: {
   title: string;
+  kind: CardKind;
   onOpenItem: (stock: ListedStock) => void;
 }) {
-  const [items, setItems] = useState<ListedStock[]>(INITIAL_STOCKS);
+  const [items, setItems] = useState<ListedStock[]>([]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
+
+  useEffect(() => {
+    listCards(kind).then(setItems).catch(() => setItems([]));
+  }, [kind]);
 
   function addItem() {
     setItems((current) => {
@@ -79,28 +112,35 @@ function CardSection({
   }
 
   function confirmItem(id: string) {
-    setItems((current) =>
-      current.map((item) => {
+    setItems((current) => {
+      const next = current.map((item) => {
         if (item.id !== id) return item;
         if (!item.ticker.trim() && !item.name.trim()) return item;
         return { ...item, saved: true };
-      }),
-    );
+      });
+      const saved = next.find((item) => item.id === id && item.saved);
+      if (saved) upsertCard(kind, saved);
+      return next;
+    });
   }
 
   function updateItem(id: string, patch: Partial<ListedStock>) {
-    setItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
+    setItems((current) => {
+      const next = current.map((item) => (item.id === id ? { ...item, ...patch } : item));
+      const saved = next.find((item) => item.id === id && item.saved);
+      if (saved) upsertCard(kind, saved);
+      return next;
+    });
   }
 
   function askRemove(item: ListedStock) {
-    Alert.alert("Delete stock", `Remove ${item.ticker || "this stock"}?`, [
+    Alert.alert("Delete", `Remove ${item.ticker || "this card"}?`, [
       { text: "Cancel", style: "cancel", onPress: () => setOpenSwipe(null) },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
+          if (item.saved) deleteCard(item.id);
           setItems((current) => current.filter((entry) => entry.id !== item.id));
           setOpenSwipe(null);
         },
@@ -116,7 +156,8 @@ function CardSection({
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]?.uri) {
-      updateItem(id, { image: result.assets[0].uri });
+      const image = await persistLogo(id, result.assets[0].uri);
+      updateItem(id, { image });
     }
   }
 

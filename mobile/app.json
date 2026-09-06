@@ -30,7 +30,8 @@
         {
           "photosPermission": "Allow access to choose a stock image."
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }

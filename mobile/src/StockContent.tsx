@@ -23,15 +23,19 @@ import Svg, {
 import { HistoryCard } from "./HistoryCard";
 import {
   ASSET,
+  chartScale,
+  filterSeries,
   formatChartDate,
   formatEuro,
   formatNumber,
-  rangeChange,
   rangePeriodLabel,
-  seriesFor,
+  seriesChange,
+  stockStats,
+  type HistoryEntry,
   type PricePoint,
   type RangeKey,
 } from "./assetData";
+import { loadStockHistory, saveStockHistory } from "./db";
 import type { ListedStock } from "./stockList";
 
 const BLUE = "#3B82F6";
@@ -50,10 +54,42 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   const scrollRef = useRef<ScrollView>(null);
   const historyOffset = useRef({ y: 0, height: 0 });
   const revealAfterLayout = useRef(false);
-  const prices = useMemo(() => seriesFor(range), [range]);
-  const change = useMemo(() => rangeChange(range), [range]);
-  const shownPrice = hover?.value ?? ASSET.price;
+  const [ready, setReady] = useState(false);
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const stats = useMemo(() => stockStats(entries), [entries]);
+  const prices = useMemo(() => filterSeries(stats.prices, range), [stats.prices, range]);
+  const change = useMemo(() => seriesChange(prices), [prices]);
+  const shownPrice = hover?.value ?? stats.lastPrice;
   const up = change.amount >= 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    if (!stock?.id) {
+      setEntries([]);
+      setReady(true);
+      return;
+    }
+    loadStockHistory(stock.id)
+      .then((rows) => {
+        if (cancelled) return;
+        setEntries(rows);
+        setReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEntries([]);
+        setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stock?.id]);
+
+  function persist(next: HistoryEntry[]) {
+    setEntries(next);
+    if (stock?.id) saveStockHistory(stock.id, next);
+  }
 
   function revealHistory() {
     const visible = Dimensions.get("window").height - keyboardHeightRef.current;
@@ -84,6 +120,10 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
       hide.remove();
     };
   }, []);
+
+  if (!ready) {
+    return <View style={styles.screen} />;
+  }
 
   return (
     <ScrollView
@@ -126,8 +166,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
 
       <PriceChart
         prices={prices}
-        current={ASSET.price}
-        average={ASSET.averagePrice}
+        current={stats.lastPrice}
+        average={stats.averagePrice}
         hover={hover}
         onHover={setHover}
         onScrubbing={setScrubbing}
@@ -154,14 +194,14 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
 
       <Text style={styles.section}>Your investment</Text>
       <View style={styles.card}>
-        <Row label="VALUE" value={formatEuro(ASSET.value)} />
+        <Row label="VALUE" value={formatEuro(stats.value)} />
         <Row
           label="RETURN"
-          value={`+${formatEuro(ASSET.returnAmount)} (${ASSET.returnPct.toFixed(2)}%)`}
-          green
+          value={`${stats.returnAmount >= 0 ? "+" : ""}${formatEuro(stats.returnAmount)} (${stats.returnPct.toFixed(2)}%)`}
+          green={stats.returnAmount >= 0}
         />
-        <Row label="SHARES" value={formatNumber(ASSET.shares, 8)} underline />
-        <Row label="AVERAGE PRICE" value={formatEuro(ASSET.averagePrice)} last />
+        <Row label="SHARES" value={formatNumber(stats.shares, 8)} underline />
+        <Row label="AVERAGE PRICE" value={formatEuro(stats.averagePrice)} last />
       </View>
 
       <View
@@ -177,6 +217,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         }}
       >
         <HistoryCard
+          entries={entries}
+          onChange={persist}
           onAdded={() => {
             revealAfterLayout.current = true;
           }}
@@ -238,8 +280,7 @@ function PriceChart({
   const top = 22;
   const bottom = 10;
   const values = prices.map((point) => point.value);
-  const min = Math.min(136, ...values) - 2;
-  const max = Math.max(168, ...values) + 2;
+  const { min, max, ticks } = chartScale(values);
   const innerW = width - left - right;
   const innerH = height - top - bottom;
 
@@ -254,9 +295,11 @@ function PriceChart({
   const line = points
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
     .join(" ");
-  const area = `${line} L ${left + innerW} ${top + innerH} L ${left} ${top + innerH} Z`;
+  const area =
+    points.length > 0
+      ? `${line} L ${left + innerW} ${top + innerH} L ${left} ${top + innerH} Z`
+      : "";
 
-  const ticks = [136, 140, 144, 148, 156, 160, 164];
   const currentY = yFor(current);
   const averageY = yFor(average);
   const hoverPoint = hover
@@ -316,15 +359,17 @@ function PriceChart({
             {tick.toFixed(2)}
           </SvgText>
         ))}
-        <Path d={area} fill="url(#fill)" />
-        <Path
-          d={line}
-          fill="none"
-          stroke={BLUE}
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
+        {area ? <Path d={area} fill="url(#fill)" /> : null}
+        {line ? (
+          <Path
+            d={line}
+            fill="none"
+            stroke={BLUE}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : null}
         <Line
           x1={left}
           x2={width - 25}

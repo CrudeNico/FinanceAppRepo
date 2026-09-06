@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { DayEntry } from "./models";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -31,10 +32,7 @@ const MONTHS = [
   "December",
 ];
 
-type DayEntry = {
-  gain: string;
-  loss: string;
-};
+export type { DayEntry };
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -68,12 +66,16 @@ function mondayOffset(year: number, month: number) {
 export function TradingCalendar({
   toolbar,
   onMonthTotal,
+  days,
+  onDaysChange,
 }: {
   toolbar?: ReactNode;
   onMonthTotal?: (total: number) => void;
+  days: Record<string, DayEntry>;
+  onDaysChange: (days: Record<string, DayEntry>) => void;
 }) {
-  const [cursor, setCursor] = useState({ year: 2026, month: 8 });
-  const [days, setDays] = useState<Record<string, DayEntry>>({});
+  const now = new Date();
+  const [cursor, setCursor] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [picked, setPicked] = useState<string | null>(null);
 
   const cells = useMemo(() => {
@@ -117,10 +119,8 @@ export function TradingCalendar({
 
   function updatePicked(patch: Partial<DayEntry>) {
     if (!picked) return;
-    setDays((current) => {
-      const previous = current[picked] ?? { gain: "", loss: "" };
-      return { ...current, [picked]: { ...previous, ...patch } };
-    });
+    const previous = days[picked] ?? { gain: "", loss: "" };
+    onDaysChange({ ...days, [picked]: { ...previous, ...patch } });
   }
 
   return (

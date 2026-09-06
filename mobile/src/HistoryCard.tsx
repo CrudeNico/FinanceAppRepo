@@ -11,12 +11,12 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
-  INITIAL_HISTORY,
-  TODAY,
   formatDayMonth,
+  todayIso,
   yearOf,
   type HistoryEntry,
 } from "./assetData";
+import { useLockBackGesture } from "./useLockBackGesture";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -25,16 +25,23 @@ const RED = "#DC2626";
 const ACTION = 68;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function HistoryCard({ onAdded }: { onAdded?: () => void }) {
-  const [entries, setEntries] = useState<HistoryEntry[]>(INITIAL_HISTORY);
-  const latestYear = Math.max(yearOf(TODAY), ...entries.map((entry) => yearOf(entry.date)));
+export function HistoryCard({
+  entries,
+  onChange,
+  onAdded,
+}: {
+  entries: HistoryEntry[];
+  onChange: (entries: HistoryEntry[]) => void;
+  onAdded?: () => void;
+}) {
+  const latestYear = Math.max(yearOf(todayIso()), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.date)));
-    set.add(yearOf(TODAY));
+    set.add(yearOf(todayIso()));
     return [...set].sort((a, b) => b - a);
   }, [entries]);
 
@@ -46,27 +53,23 @@ export function HistoryCard({ onAdded }: { onAdded?: () => void }) {
 
   function addRow() {
     const id = `h${Date.now()}`;
-    setEntries((current) => [
-      { id, date: TODAY, amount: "", price: "", fx: "" },
-      ...current,
-    ]);
+    onChange([{ id, date: todayIso(), amount: "", price: "", fx: "" }, ...entries]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     setOpenSwipe(null);
     onAdded?.();
   }
 
   function update(id: string, patch: Partial<HistoryEntry>) {
-    setEntries((current) =>
-      current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
-    );
+    onChange(entries.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
   }
 
   function remove(id: string) {
-    setEntries((current) => current.filter((entry) => entry.id !== id));
+    onChange(entries.filter((entry) => entry.id !== id));
     setOpenSwipe(null);
   }
 
   const calendarEntry = entries.find((entry) => entry.id === calendarFor) ?? null;
+  const back = useLockBackGesture();
 
   return (
     <>
@@ -92,7 +95,12 @@ export function HistoryCard({ onAdded }: { onAdded?: () => void }) {
                 {open ? <ChevronUp /> : <ChevronDown />}
               </Pressable>
               {open ? (
-                <View style={styles.table}>
+                <View
+                  style={styles.table}
+                  onTouchStart={back.lock}
+                  onTouchEnd={back.unlock}
+                  onTouchCancel={back.unlock}
+                >
                   <View style={styles.tableHead}>
                     <Text style={[styles.headCell, styles.dateCol]}>Date</Text>
                     <Text style={[styles.headCell, styles.numCol, styles.colLine]}>Amt</Text>
@@ -178,6 +186,7 @@ function HistoryRow({
   const openRef = useRef(onOpen);
   const closeRef = useRef(onClose);
   const dateRef = useRef(onDate);
+  const back = useLockBackGesture();
   openRef.current = onOpen;
   closeRef.current = onClose;
   dateRef.current = onDate;
@@ -209,6 +218,7 @@ function HistoryRow({
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
+        back.lock();
         touchX.current = event.nativeEvent.locationX;
         pan.stopAnimation((value) => {
           offset.current = value;
@@ -219,6 +229,7 @@ function HistoryRow({
         pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
       },
       onPanResponderRelease: (_, gesture) => {
+        back.unlock();
         if (Math.abs(gesture.dx) < 8 && Math.abs(gesture.dy) < 8) {
           if (offset.current > ACTION / 2) {
             closeRef.current();
@@ -238,6 +249,9 @@ function HistoryRow({
         if (gesture.dx > 8 || gesture.vx > 0.12) snap(true);
         else if (gesture.dx < -8 || gesture.vx < -0.12) snap(false);
         else snap(offset.current + gesture.dx > ACTION / 2);
+      },
+      onPanResponderTerminate: () => {
+        back.unlock();
       },
     }),
   ).current;

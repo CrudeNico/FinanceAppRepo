@@ -58,6 +58,101 @@ export function seriesFor(range: RangeKey) {
   return SERIES[range];
 }
 
+export function toAmount(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const RANGE_DAYS: Record<RangeKey, number | null> = {
+  "1D": 1,
+  "1W": 7,
+  "1M": 30,
+  "3M": 90,
+  "1Y": 365,
+  MAX: null,
+};
+
+export function filterSeries(points: PricePoint[], range: RangeKey) {
+  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length === 0 || range === "MAX") return sorted;
+  const days = RANGE_DAYS[range];
+  if (days == null) return sorted;
+  const end = new Date(`${sorted[sorted.length - 1].date.slice(0, 10)}T00:00:00`);
+  const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+  const filtered = sorted.filter((point) => new Date(`${point.date.slice(0, 10)}T00:00:00`) >= start);
+  return filtered.length > 0 ? filtered : sorted.slice(-1);
+}
+
+export function seriesChange(points: PricePoint[]) {
+  if (points.length === 0) return { amount: 0, pct: 0 };
+  const start = points[0].value;
+  const end = points[points.length - 1].value;
+  const amount = end - start;
+  const pct = start === 0 ? 0 : (amount / start) * 100;
+  return { amount, pct };
+}
+
+export function chartScale(values: number[]) {
+  if (values.length === 0) return { min: 0, max: 1, ticks: [0, 1] };
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const span = Math.max(high - low, Math.abs(high) * 0.04, 1);
+  const min = low - span * 0.12;
+  const max = high + span * 0.12;
+  const step = (max - min) / 4;
+  const ticks = [0, 1, 2, 3, 4].map((index) => min + step * index);
+  return { min, max, ticks };
+}
+
+export function stockStats(entries: HistoryEntry[]) {
+  const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  let invested = 0;
+  let shares = 0;
+  let lastPrice = 0;
+  const prices: PricePoint[] = [];
+  ordered.forEach((entry) => {
+    const amount = toAmount(entry.amount);
+    const price = toAmount(entry.price);
+    if (price > 0) {
+      lastPrice = price;
+      prices.push({ date: entry.date, value: price });
+    }
+    if (amount !== 0 && price > 0) {
+      invested += amount;
+      shares += amount / price;
+    }
+  });
+  const value = lastPrice * shares;
+  const returnAmount = value - invested;
+  const returnPct = invested === 0 ? 0 : (returnAmount / invested) * 100;
+  const averagePrice = shares === 0 ? 0 : invested / shares;
+  return { invested, shares, lastPrice, value, returnAmount, returnPct, averagePrice, prices };
+}
+
+export function tradingStats(entries: import("./models").TradeRow[]) {
+  const chronological = [...entries].sort((a, b) => a.month.localeCompare(b.month));
+  let running = 0;
+  let profit = 0;
+  const prices: PricePoint[] = [];
+  chronological.forEach((entry) => {
+    const pnl = toAmount(entry.gain) - toAmount(entry.loss);
+    const flow = toAmount(entry.deposit) - toAmount(entry.withdrawal);
+    profit += pnl;
+    running += pnl + flow;
+    prices.push({ date: `${entry.month}-01`, value: running });
+  });
+  const invested = running - profit;
+  const returnPct = invested === 0 ? 0 : (profit / Math.abs(invested)) * 100;
+  return { value: running, returnAmount: profit, returnPct, prices };
+}
+
+export function todayIso() {
+  const date = new Date();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function rangeChange(range: RangeKey) {
   const series = SERIES[range];
   const start = series[0].value;

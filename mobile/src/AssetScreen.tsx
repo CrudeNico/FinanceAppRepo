@@ -163,6 +163,8 @@ export function AssetScreen() {
         }}
       >
         <HistoryCard
+          entries={[]}
+          onChange={() => undefined}
           onAdded={() => {
             revealAfterLayout.current = true;
           }}
