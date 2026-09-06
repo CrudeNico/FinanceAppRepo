@@ -20,12 +20,12 @@ import Svg, {
   Stop,
   Text as SvgText,
 } from "react-native-svg";
-import { HistoryCard } from "./HistoryCard";
+import { TradingCalendar } from "./TradingCalendar";
+import { TradingHistory } from "./TradingHistory";
 import {
   ASSET,
   formatChartDate,
   formatEuro,
-  formatNumber,
   rangeChange,
   rangePeriodLabel,
   seriesFor,
@@ -41,7 +41,8 @@ const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
-export function StockContent({ stock }: { stock?: ListedStock }) {
+export function TradingContent({ stock }: { stock?: ListedStock }) {
+  const [view, setView] = useState<"graph" | "calendar">("graph");
   const [range, setRange] = useState<RangeKey>("1Y");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -52,8 +53,37 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   const revealAfterLayout = useRef(false);
   const prices = useMemo(() => seriesFor(range), [range]);
   const change = useMemo(() => rangeChange(range), [range]);
+  const [monthTotal, setMonthTotal] = useState(0);
   const shownPrice = hover?.value ?? ASSET.price;
   const up = change.amount >= 0;
+  const monthPct = ASSET.value === 0 ? 0 : (monthTotal / ASSET.value) * 100;
+  const monthUp = monthTotal >= 0;
+
+  const viewToggle = (
+    <View style={styles.viewToggle}>
+      <Pressable
+        onPress={() => {
+          setHover(null);
+          setView("graph");
+        }}
+        hitSlop={8}
+        style={[styles.viewBtn, view === "graph" && styles.viewBtnOn]}
+      >
+        <ChartIcon />
+      </Pressable>
+      <Pressable
+        onPress={() => {
+          setHover(null);
+          setScrubbing(false);
+          setView("calendar");
+        }}
+        hitSlop={8}
+        style={[styles.viewBtn, view === "calendar" && styles.viewBtnOn]}
+      >
+        <CalendarIcon />
+      </Pressable>
+    </View>
+  );
 
   function revealHistory() {
     const visible = Dimensions.get("window").height - keyboardHeightRef.current;
@@ -117,40 +147,52 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
 
       <Text style={styles.price}>
         <Text style={styles.euro}>€</Text>
-        {shownPrice.toFixed(2)}
+        {view === "calendar" ? Math.abs(monthTotal).toFixed(2) : shownPrice.toFixed(2)}
       </Text>
-      <Text style={[styles.change, { color: up ? GREEN : RED }]}>
-        {up ? "↗" : "↘"} {Math.abs(change.amount).toFixed(2)} ({Math.abs(change.pct).toFixed(2)}%){" "}
-        {rangePeriodLabel(range)}
-      </Text>
+      {view === "calendar" ? (
+        <Text style={[styles.change, { color: monthUp ? GREEN : RED }]}>
+          {monthUp ? "↗" : "↘"} {Math.abs(monthPct).toFixed(2)}%
+        </Text>
+      ) : (
+        <Text style={[styles.change, { color: up ? GREEN : RED }]}>
+          {up ? "↗" : "↘"} {Math.abs(change.amount).toFixed(2)} ({Math.abs(change.pct).toFixed(2)}%){" "}
+          {rangePeriodLabel(range)}
+        </Text>
+      )}
 
-      <PriceChart
-        prices={prices}
-        current={ASSET.price}
-        average={ASSET.averagePrice}
-        hover={hover}
-        onHover={setHover}
-        onScrubbing={setScrubbing}
-      />
+      {view === "graph" ? (
+        <PriceChart
+          prices={prices}
+          current={ASSET.price}
+          hover={hover}
+          onHover={setHover}
+          onScrubbing={setScrubbing}
+        />
+      ) : (
+        <TradingCalendar toolbar={viewToggle} onMonthTotal={setMonthTotal} />
+      )}
 
+      {view === "graph" ? (
       <View style={styles.controls}>
         <View style={styles.ranges}>
           {RANGES.map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => {
-                setHover(null);
-                setRange(item);
-              }}
-              style={[styles.range, range === item && styles.rangeOn]}
-            >
-              <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
-                {item}
-              </Text>
-            </Pressable>
+                <Pressable
+                  key={item}
+                  onPress={() => {
+                    setHover(null);
+                    setRange(item);
+                  }}
+                  style={[styles.range, range === item && styles.rangeOn]}
+                >
+                  <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
+                    {item}
+                  </Text>
+                </Pressable>
           ))}
         </View>
+        {viewToggle}
       </View>
+      ) : null}
 
       <Text style={styles.section}>Your investment</Text>
       <View style={styles.card}>
@@ -159,9 +201,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
           label="RETURN"
           value={`+${formatEuro(ASSET.returnAmount)} (${ASSET.returnPct.toFixed(2)}%)`}
           green
+          last
         />
-        <Row label="SHARES" value={formatNumber(ASSET.shares, 8)} underline />
-        <Row label="AVERAGE PRICE" value={formatEuro(ASSET.averagePrice)} last />
       </View>
 
       <View
@@ -176,7 +217,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
           }
         }}
       >
-        <HistoryCard
+        <TradingHistory
           onAdded={() => {
             revealAfterLayout.current = true;
           }}
@@ -218,14 +259,12 @@ function Row({
 function PriceChart({
   prices,
   current,
-  average,
   hover,
   onHover,
   onScrubbing,
 }: {
   prices: PricePoint[];
   current: number;
-  average: number;
   hover: PricePoint | null;
   onHover: (point: PricePoint | null) => void;
   onScrubbing: (active: boolean) => void;
@@ -258,7 +297,6 @@ function PriceChart({
 
   const ticks = [136, 140, 144, 148, 156, 160, 164];
   const currentY = yFor(current);
-  const averageY = yFor(average);
   const hoverPoint = hover
     ? points.find((point) => point.date === hover.date) ?? null
     : null;
@@ -333,17 +371,7 @@ function PriceChart({
           stroke={BLUE}
           strokeWidth="1"
         />
-        <Line
-          x1={left}
-          x2={width - 25}
-          y1={averageY}
-          y2={averageY}
-          stroke="#9CA3AF"
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
         <Pill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
-        <Pill x={width - 50} y={averageY - 10} label={average.toFixed(2)} fill="#4B5563" />
         {hoverPoint ? (
           <>
             <Line
@@ -368,6 +396,34 @@ function PriceChart({
         ) : null}
       </Svg>
     </View>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
+        stroke={INK}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"
+        stroke={INK}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -428,7 +484,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 8,
   },
-  ranges: { flexDirection: "row", alignItems: "center", gap: 2 },
+  ranges: { flex: 1, flexDirection: "row", alignItems: "center", gap: 2 },
+  viewToggle: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewBtn: { padding: 6, borderRadius: 10 },
+  viewBtnOn: { backgroundColor: "#EFEFEF" },
   range: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
   rangeOn: { backgroundColor: "#EFEFEF" },
   rangeText: { color: MUTED, fontSize: 13, fontWeight: "600" },

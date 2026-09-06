@@ -5,6 +5,7 @@ export type ListedStock = {
   image: string | null;
   letter?: string;
   color?: string;
+  saved?: boolean;
 };
 
 export const INITIAL_STOCKS: ListedStock[] = [
@@ -15,5 +16,6 @@ export const INITIAL_STOCKS: ListedStock[] = [
     image: null,
     letter: "V",
     color: "#C8102E",
+    saved: true,
   },
 ];

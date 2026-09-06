@@ -58,6 +58,32 @@ export function seriesFor(range: RangeKey) {
   return SERIES[range];
 }
 
+export function rangeChange(range: RangeKey) {
+  const series = SERIES[range];
+  const start = series[0].value;
+  const end = series[series.length - 1].value;
+  const amount = end - start;
+  const pct = start === 0 ? 0 : (amount / start) * 100;
+  return { amount, pct };
+}
+
+export function rangePeriodLabel(range: RangeKey) {
+  switch (range) {
+    case "1D":
+      return "last day";
+    case "1W":
+      return "last week";
+    case "1M":
+      return "last month";
+    case "3M":
+      return "last 3 months";
+    case "1Y":
+      return "last year";
+    case "MAX":
+      return "all time";
+  }
+}
+
 export function formatEuro(value: number, digits = 2) {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",

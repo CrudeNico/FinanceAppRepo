@@ -28,36 +28,80 @@ export function HomeScreen({
 }: {
   navigation: { navigate: (name: string, params?: object) => void };
 }) {
-  const [stocks, setStocks] = useState<ListedStock[]>(INITIAL_STOCKS);
+  return (
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <CardSection
+          title="Trading"
+          onOpenItem={(stock) => navigation.navigate("Trading", { stock })}
+        />
+        <View style={styles.sectionGap} />
+        <CardSection
+          title="Stocks"
+          onOpenItem={(stock) => navigation.navigate("Stock", { stock })}
+        />
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function CardSection({
+  title,
+  onOpenItem,
+}: {
+  title: string;
+  onOpenItem: (stock: ListedStock) => void;
+}) {
+  const [items, setItems] = useState<ListedStock[]>(INITIAL_STOCKS);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
 
-  function addStock() {
-    setStocks((current) => [
-      ...current,
-      {
-        id: `s${Date.now()}`,
-        ticker: "",
-        name: "",
-        image: null,
-      },
-    ]);
+  function addItem() {
+    setItems((current) => {
+      if (current.some((item) => !item.saved)) return current;
+      return [
+        ...current,
+        {
+          id: `s${Date.now()}`,
+          ticker: "",
+          name: "",
+          image: null,
+          saved: false,
+        },
+      ];
+    });
     setOpenSwipe(null);
   }
 
-  function updateStock(id: string, patch: Partial<ListedStock>) {
-    setStocks((current) =>
-      current.map((stock) => (stock.id === id ? { ...stock, ...patch } : stock)),
+  function confirmItem(id: string) {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.id !== id) return item;
+        if (!item.ticker.trim() && !item.name.trim()) return item;
+        return { ...item, saved: true };
+      }),
     );
   }
 
-  function askRemove(stock: ListedStock) {
-    Alert.alert("Delete stock", `Remove ${stock.ticker || "this stock"}?`, [
+  function updateItem(id: string, patch: Partial<ListedStock>) {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  }
+
+  function askRemove(item: ListedStock) {
+    Alert.alert("Delete stock", `Remove ${item.ticker || "this stock"}?`, [
       { text: "Cancel", style: "cancel", onPress: () => setOpenSwipe(null) },
       {
         text: "Delete",
         style: "destructive",
         onPress: () => {
-          setStocks((current) => current.filter((item) => item.id !== stock.id));
+          setItems((current) => current.filter((entry) => entry.id !== item.id));
           setOpenSwipe(null);
         },
       },
@@ -72,44 +116,37 @@ export function HomeScreen({
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]?.uri) {
-      updateStock(id, { image: result.assets[0].uri });
+      updateItem(id, { image: result.assets[0].uri });
     }
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.sectionBar}>
-          <Text style={styles.section}>Stocks</Text>
-          <Pressable onPress={addStock} hitSlop={10}>
-            <Text style={styles.plus}>+</Text>
-          </Pressable>
-        </View>
+    <View>
+      <View style={styles.sectionBar}>
+        <Text style={styles.section}>{title}</Text>
+        <Pressable onPress={addItem} hitSlop={10}>
+          <Text style={styles.plus}>+</Text>
+        </Pressable>
+      </View>
 
-        {stocks.map((stock) => (
-          <StockCard
-            key={stock.id}
-            stock={stock}
-            open={openSwipe === stock.id}
-            onOpen={() => setOpenSwipe(stock.id)}
-            onClose={() => setOpenSwipe((current) => (current === stock.id ? null : current))}
-            onDelete={() => askRemove(stock)}
-            onPickImage={() => pickImage(stock.id)}
-            onChange={(patch) => updateStock(stock.id, patch)}
-            onOpenStock={() => {
-              if (!stock.ticker.trim() && !stock.name.trim()) return;
-              navigation.navigate("Stock", { stock });
-            }}
-          />
-        ))}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {items.map((item) => (
+        <StockCard
+          key={item.id}
+          stock={item}
+          open={openSwipe === item.id}
+          onOpen={() => setOpenSwipe(item.id)}
+          onClose={() => setOpenSwipe((current) => (current === item.id ? null : current))}
+          onDelete={() => askRemove(item)}
+          onPickImage={() => pickImage(item.id)}
+          onChange={(patch) => updateItem(item.id, patch)}
+          onConfirm={() => confirmItem(item.id)}
+          onOpenStock={() => {
+            if (!item.saved) return;
+            onOpenItem(item);
+          }}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -121,6 +158,7 @@ function StockCard({
   onDelete,
   onPickImage,
   onChange,
+  onConfirm,
   onOpenStock,
 }: {
   stock: ListedStock;
@@ -130,6 +168,7 @@ function StockCard({
   onDelete: () => void;
   onPickImage: () => void;
   onChange: (patch: Partial<ListedStock>) => void;
+  onConfirm: () => void;
   onOpenStock: () => void;
 }) {
   const pan = useRef(new Animated.Value(0)).current;
@@ -140,17 +179,32 @@ function StockCard({
   closeRef.current = onClose;
 
   function snap(shouldOpen: boolean) {
-    const toValue = shouldOpen ? ACTION : 0;
-    offset.current = toValue;
-    Animated.timing(pan, { toValue, duration: 120, useNativeDriver: true }).start();
-    if (shouldOpen) openRef.current();
-    else closeRef.current();
+    pan.stopAnimation();
+    if (shouldOpen) {
+      offset.current = ACTION;
+      Animated.timing(pan, {
+        toValue: ACTION,
+        duration: 180,
+        useNativeDriver: true,
+      }).start();
+      openRef.current();
+      return;
+    }
+    offset.current = 0;
+    Animated.timing(pan, {
+      toValue: 0,
+      duration: 80,
+      useNativeDriver: true,
+    }).start(() => {
+      pan.setValue(0);
+    });
+    closeRef.current();
   }
 
   useEffect(() => {
     if (!open) {
       offset.current = 0;
-      Animated.timing(pan, { toValue: 0, duration: 120, useNativeDriver: true }).start();
+      pan.setValue(0);
     }
   }, [open, pan]);
 
@@ -167,17 +221,22 @@ function StockCard({
         pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
       },
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > 8 || gesture.vx > 0.12) snap(true);
-        else if (gesture.dx < -8 || gesture.vx < -0.12) snap(false);
-        else snap(offset.current + gesture.dx > ACTION / 2);
+        const goingLeft = gesture.dx < -4 || gesture.vx < -0.05;
+        if (goingLeft) {
+          snap(false);
+          return;
+        }
+        if (gesture.dx > 6 || gesture.vx > 0.08) snap(true);
+        else snap(false);
       },
     }),
   ).current;
 
   const letter = stock.letter ?? (stock.ticker.trim()[0] || "+");
-  const saved = Boolean(stock.ticker.trim() && stock.name.trim());
+  const saved = Boolean(stock.saved);
 
   return (
+    <View>
     <View style={styles.rowWrap}>
       <View style={styles.deleteLane}>
         <Pressable onPress={onDelete} style={styles.deleteBtn}>
@@ -236,6 +295,12 @@ function StockCard({
         )}
       </Animated.View>
     </View>
+    {!saved ? (
+      <Pressable onPress={onConfirm} style={[styles.rowWrap, styles.card, styles.confirmCard]}>
+        <Text style={styles.confirmText}>Add</Text>
+      </Pressable>
+    ) : null}
+    </View>
   );
 }
 
@@ -269,6 +334,7 @@ const styles = StyleSheet.create({
   },
   section: { color: INK, fontSize: 17, fontWeight: "400" },
   plus: { color: INK, fontSize: 24, lineHeight: 26, fontWeight: "300" },
+  sectionGap: { height: 36 },
   rowWrap: {
     position: "relative",
     overflow: "hidden",
@@ -327,4 +393,9 @@ const styles = StyleSheet.create({
   copy: { flex: 1, minWidth: 0 },
   tickerInput: { color: MUTED, fontSize: 11, padding: 0 },
   nameInput: { color: INK, fontSize: 14, fontWeight: "600", padding: 0, marginTop: 1 },
+  confirmCard: {
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  confirmText: { color: INK, fontSize: 16, textAlign: "center", width: "100%" },
 });

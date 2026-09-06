@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { HomeScreen } from "./src/HomeScreen";
 import { StockScreen } from "./src/StockScreen";
+import { TradingScreen } from "./src/TradingScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -21,6 +22,11 @@ export default function App() {
         <Stack.Screen
           name="Stock"
           component={StockScreen}
+          options={{ animation: "none" }}
+        />
+        <Stack.Screen
+          name="Trading"
+          component={TradingScreen}
           options={{ animation: "none" }}
         />
       </Stack.Navigator>
