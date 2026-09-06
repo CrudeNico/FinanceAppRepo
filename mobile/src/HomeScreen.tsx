@@ -280,9 +280,9 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: ACTION,
+    width: ACTION + 20,
     backgroundColor: RED,
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
   },
   deleteBtn: {
