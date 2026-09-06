@@ -72,15 +72,19 @@ const RANGE_DAYS: Record<RangeKey, number | null> = {
   MAX: null,
 };
 
-export function filterSeries(points: PricePoint[], range: RangeKey) {
-  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
+export function filterByRange<T extends { date: string }>(items: T[], range: RangeKey) {
+  const sorted = [...items].sort((a, b) => a.date.localeCompare(b.date));
   if (sorted.length === 0 || range === "MAX") return sorted;
   const days = RANGE_DAYS[range];
   if (days == null) return sorted;
   const end = new Date(`${sorted[sorted.length - 1].date.slice(0, 10)}T00:00:00`);
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
-  const filtered = sorted.filter((point) => new Date(`${point.date.slice(0, 10)}T00:00:00`) >= start);
+  const filtered = sorted.filter((item) => new Date(`${item.date.slice(0, 10)}T00:00:00`) >= start);
   return filtered.length > 0 ? filtered : sorted.slice(-1);
+}
+
+export function filterSeries(points: PricePoint[], range: RangeKey) {
+  return filterByRange(points, range);
 }
 
 export function seriesChange(points: PricePoint[]) {
@@ -127,6 +131,41 @@ export function stockStats(entries: HistoryEntry[]) {
   const returnPct = invested === 0 ? 0 : (returnAmount / invested) * 100;
   const averagePrice = shares === 0 ? 0 : invested / shares;
   return { invested, shares, lastPrice, value, returnAmount, returnPct, averagePrice, prices };
+}
+
+export function stockValuePoints(entries: HistoryEntry[]) {
+  const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  let shares = 0;
+  let lastPrice = 0;
+  const points: PricePoint[] = [];
+  ordered.forEach((entry) => {
+    const amount = toAmount(entry.amount);
+    const price = toAmount(entry.price);
+    if (price > 0) lastPrice = price;
+    if (amount !== 0 && price > 0) shares += amount / price;
+    if (lastPrice > 0) points.push({ date: entry.date, value: lastPrice * shares });
+  });
+  return points;
+}
+
+export function mergeValueSeries(seriesList: PricePoint[][]) {
+  const dates = new Set<string>();
+  seriesList.forEach((series) => series.forEach((point) => dates.add(point.date)));
+  const sorted = [...dates].sort((a, b) => a.localeCompare(b));
+  const queues = seriesList.map((series) =>
+    [...series].sort((a, b) => a.date.localeCompare(b.date)),
+  );
+  const last = seriesList.map(() => 0);
+  const index = seriesList.map(() => 0);
+  return sorted.map((date) => {
+    queues.forEach((series, i) => {
+      while (index[i] < series.length && series[index[i]].date <= date) {
+        last[i] = series[index[i]].value;
+        index[i] += 1;
+      }
+    });
+    return { date, value: last.reduce((sum, item) => sum + item, 0) };
+  });
 }
 
 export function tradingStats(entries: import("./models").TradeRow[]) {

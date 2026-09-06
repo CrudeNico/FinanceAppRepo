@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   Alert,
   Animated,
@@ -17,6 +18,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
 import { deleteCard, listCards, persistLogo, upsertCard, type CardKind } from "./db";
+import { HomeNetWorth } from "./HomeNetWorth";
 import type { ListedStock } from "./stockList";
 
 const INK = "#111111";
@@ -29,6 +31,7 @@ export function HomeScreen({
 }: {
   navigation: { navigate: (name: string, params?: object) => void };
 }) {
+  const [lockScroll, setLockScroll] = useState(false);
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -37,7 +40,9 @@ export function HomeScreen({
       <ScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!lockScroll}
       >
+        <HomeNetWorth onScrubbing={setLockScroll} />
         <CardSection
           title="Cashflow"
           kind="cashflow"
@@ -111,9 +116,11 @@ function CardSection({
   const [items, setItems] = useState<ListedStock[]>([]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
 
-  useEffect(() => {
-    listCards(kind).then(setItems).catch(() => setItems([]));
-  }, [kind]);
+  useFocusEffect(
+    useCallback(() => {
+      listCards(kind).then(setItems).catch(() => setItems([]));
+    }, [kind]),
+  );
 
   function addItem() {
     setItems((current) => {
@@ -399,9 +406,9 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#E6E6E6" },
   content: {
     flexGrow: 1,
-    justifyContent: "center",
     paddingHorizontal: 20,
-    paddingVertical: 40,
+    paddingTop: 64,
+    paddingBottom: 40,
   },
   sectionBar: {
     flexDirection: "row",
@@ -411,7 +418,7 @@ const styles = StyleSheet.create({
   },
   section: { color: INK, fontSize: 17, fontWeight: "400" },
   plus: { color: INK, fontSize: 24, lineHeight: 26, fontWeight: "300" },
-  sectionGap: { height: 36 },
+  sectionGap: { height: 16 },
   rowWrap: {
     position: "relative",
     overflow: "hidden",

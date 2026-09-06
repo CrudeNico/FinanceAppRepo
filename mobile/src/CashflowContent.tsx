@@ -25,6 +25,7 @@ import {
   ASSET,
   cashflowStats,
   chartScale,
+  filterByRange,
   filterSeries,
   formatChartDate,
   formatEuro,
@@ -43,7 +44,7 @@ const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
 
 export function CashflowContent({ stock }: { stock?: ListedStock }) {
-  const [range, setRange] = useState<RangeKey>("1Y");
+  const [range, setRange] = useState<RangeKey>("1M");
   const [hover, setHover] = useState<PricePoint | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -60,17 +61,23 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
   const show = dataReady && logoReady;
   const stats = useMemo(() => cashflowStats(entries), [entries]);
   const prices = useMemo(() => filterSeries(stats.prices, range), [stats.prices, range]);
+  const pieEntries = useMemo(() => {
+    const rows = entries.filter(
+      (entry) => entry.id !== "c-start" && entry.label !== "Starting balance",
+    );
+    return filterByRange(rows, range);
+  }, [entries, range]);
   const expenseSlices = useMemo(
-    () => categorySlices(entries, groups, "expense"),
-    [entries, groups],
+    () => categorySlices(pieEntries, groups, "expense"),
+    [pieEntries, groups],
   );
   const incomeSlices = useMemo(
-    () => categorySlices(entries, groups, "income"),
-    [entries, groups],
+    () => categorySlices(pieEntries, groups, "income"),
+    [pieEntries, groups],
   );
   const totalSlices = useMemo(
-    () => categorySlices(entries, groups, "all"),
-    [entries, groups],
+    () => categorySlices(pieEntries, groups, "all"),
+    [pieEntries, groups],
   );
   const shownPrice = hover?.value ?? stats.value;
 
@@ -203,22 +210,7 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
             onScrubbing={setScrubbing}
           />
           <View style={styles.controls}>
-            <View style={styles.ranges}>
-              {RANGES.map((item) => (
-                <Pressable
-                  key={item}
-                  onPress={() => {
-                    setHover(null);
-                    setRange(item);
-                  }}
-                  style={[styles.range, range === item && styles.rangeOn]}
-                >
-                  <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
-                    {item}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <RangeButtons range={range} onChange={setRange} onPick={() => setHover(null)} />
             <ViewToggle view={view} onView={setView} onScrubbing={setScrubbing} onClearHover={() => setHover(null)} />
           </View>
         </>
@@ -230,6 +222,14 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
           focus={pieFocus}
           onFocus={setPieFocus}
           onScrubbing={setScrubbing}
+          ranges={
+            <RangeButtons
+              range={range}
+              onChange={setRange}
+              onPick={() => setHover(null)}
+              compact
+            />
+          }
           toggle={
             <ViewToggle
               view={view}
@@ -326,6 +326,37 @@ function shadeSlices(slices: Slice[]) {
   return [...income, ...expense];
 }
 
+function RangeButtons({
+  range,
+  onChange,
+  onPick,
+  compact,
+}: {
+  range: RangeKey;
+  onChange: (range: RangeKey) => void;
+  onPick?: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <View style={[styles.ranges, compact && styles.rangesCompact]}>
+      {RANGES.map((item) => (
+        <Pressable
+          key={item}
+          onPress={() => {
+            onPick?.();
+            onChange(item);
+          }}
+          style={[styles.range, range === item && styles.rangeOn]}
+        >
+          <Text style={[styles.rangeText, range === item && styles.rangeTextOn]}>
+            {item}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function ViewToggle({
   view,
   onView,
@@ -366,14 +397,17 @@ function ViewToggle({
 
 function PieHintCard({
   hint,
+  leading,
   extra,
 }: {
   hint: PieHint | null;
+  leading?: ReactNode;
   extra?: ReactNode;
 }) {
   const income = hint?.kind === "income";
   return (
     <View style={styles.pieHintRow}>
+      {leading && !hint ? <View style={styles.pieHintRanges}>{leading}</View> : null}
       <View style={styles.pieHintBox}>
         {hint ? (
           <>
@@ -398,6 +432,7 @@ function PieBoard({
   focus,
   onFocus,
   onScrubbing,
+  ranges,
   toggle,
 }: {
   income: Slice[];
@@ -406,9 +441,14 @@ function PieBoard({
   focus: "split" | "total";
   onFocus: (focus: "split" | "total") => void;
   onScrubbing: (active: boolean) => void;
+  ranges?: ReactNode;
   toggle?: ReactNode;
 }) {
   const [hint, setHint] = useState<PieHint | null>(null);
+
+  useEffect(() => {
+    setHint(null);
+  }, [income, expense, total]);
 
   function showHint(next: PieHint | null) {
     setHint(next);
@@ -447,7 +487,7 @@ function PieBoard({
             />
           </View>
         </View>
-        <PieHintCard hint={hint} extra={toggle} />
+        <PieHintCard hint={hint} leading={ranges} extra={toggle} />
       </View>
     );
   }
@@ -488,7 +528,7 @@ function PieBoard({
           />
         </View>
       </View>
-        <PieHintCard hint={hint} extra={toggle} />
+        <PieHintCard hint={hint} leading={ranges} extra={toggle} />
     </View>
   );
 }
@@ -584,6 +624,7 @@ function CategoryPie({
       }}
       onResponderRelease={() => {
         onScrubbing?.(false);
+        onHover?.(null);
         if (!moved.current) onTap?.();
       }}
       onResponderTerminate={() => {
@@ -946,6 +987,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   ranges: { flex: 1, flexDirection: "row", alignItems: "center", gap: 2 },
+  rangesCompact: { flex: 0 },
   viewToggle: { flexDirection: "row", alignItems: "center", gap: 4 },
   viewBtn: { padding: 6, borderRadius: 10 },
   viewBtnOn: { backgroundColor: "#EFEFEF" },
@@ -995,12 +1037,21 @@ const styles = StyleSheet.create({
   pieHintBox: {
     alignItems: "center",
   },
+  pieHintRanges: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    zIndex: 1,
+  },
   pieHintToggle: {
     position: "absolute",
     right: 0,
     top: 0,
     bottom: 0,
     justifyContent: "center",
+    zIndex: 1,
   },
   pieHintChip: {
     alignSelf: "center",
