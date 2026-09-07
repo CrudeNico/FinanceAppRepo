@@ -1,0 +1,25 @@
+[debug] [2026-09-07T13:13:37.444Z] ----------------------------------------------------------------------
+[debug] [2026-09-07T13:13:37.445Z] Command:       /opt/homebrew/Cellar/node/24.5.0/bin/node /opt/homebrew/bin/firebase firestore:delete -r -f profiles --project networthapp-f6dfc --debug
+[debug] [2026-09-07T13:13:37.445Z] CLI Version:   15.29.0
+[debug] [2026-09-07T13:13:37.445Z] Platform:      darwin
+[debug] [2026-09-07T13:13:37.445Z] Node Version:  v24.5.0
+[debug] [2026-09-07T13:13:37.445Z] Detected Agent: cursor
+[debug] [2026-09-07T13:13:37.446Z] Time:          Mon Sep 07 2026 15:13:37 GMT+0200 (Central European Summer Time)
+[debug] [2026-09-07T13:13:37.446Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-09-07T13:13:37.682Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-09-07T13:13:37.682Z] > authorizing via signed-in user (nicolas.de.rodrigo.fernandez@gmail.com)
+[debug] [2026-09-07T13:13:37.682Z] [iam] checking project networthapp-f6dfc for permissions ["datastore.entities.delete","datastore.entities.list","firebase.projects.get"]
+[debug] [2026-09-07T13:13:37.689Z] Checked if tokens are valid: true, expires at: 1788789472433
+[debug] [2026-09-07T13:13:37.689Z] Checked if tokens are valid: true, expires at: 1788789472433
+[debug] [2026-09-07T13:13:37.689Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/networthapp-f6dfc:testIamPermissions [none]
+[debug] [2026-09-07T13:13:37.689Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/networthapp-f6dfc:testIamPermissions  x-goog-user-project=networthapp-f6dfc
+[debug] [2026-09-07T13:13:37.689Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/networthapp-f6dfc:testIamPermissions {"permissions":["datastore.entities.delete","datastore.entities.list","firebase.projects.get"]}
+[debug] [2026-09-07T13:13:38.469Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/networthapp-f6dfc:testIamPermissions 200
+[debug] [2026-09-07T13:13:38.469Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/networthapp-f6dfc:testIamPermissions {"permissions":["datastore.entities.delete","datastore.entities.list","firebase.projects.get"]}
+[debug] [2026-09-07T13:13:38.470Z] Checked if tokens are valid: true, expires at: 1788789472433
+[debug] [2026-09-07T13:13:38.470Z] Checked if tokens are valid: true, expires at: 1788789472433
+[debug] [2026-09-07T13:13:38.470Z] >>> [apiv2][query] POST https://firestore.googleapis.com/v1/projects/networthapp-f6dfc/databases/(default)/documents:runQuery [none]
+[debug] [2026-09-07T13:13:38.470Z] >>> [apiv2][body] POST https://firestore.googleapis.com/v1/projects/networthapp-f6dfc/databases/(default)/documents:runQuery {"structuredQuery":{"where":{"compositeFilter":{"op":"AND","filters":[{"fieldFilter":{"field":{"fieldPath":"__name__"},"op":"GREATER_THAN_OR_EQUAL","value":{"referenceValue":"projects/networthapp-f6dfc/databases/(default)/documents/profiles/__id-9223372036854775808__"}}},{"fieldFilter":{"field":{"fieldPath":"__name__"},"op":"LESS_THAN","value":{"referenceValue":"projects/networthapp-f6dfc/databases/(default)/documents/profiles\u0000/__id-9223372036854775808__"}}}]}},"limit":7500,"from":[{"allDescendants":true}],"select":{"fields":[{"fieldPath":"__name__"}]},"orderBy":[{"field":{"fieldPath":"__name__"}}]}}
+[debug] [2026-09-07T13:13:38.692Z] <<< [apiv2][status] POST https://firestore.googleapis.com/v1/projects/networthapp-f6dfc/databases/(default)/documents:runQuery 200
+[debug] [2026-09-07T13:13:38.692Z] <<< [apiv2][body] POST https://firestore.googleapis.com/v1/projects/networthapp-f6dfc/databases/(default)/documents:runQuery [{"readTime":"2026-09-07T13:13:38.680867Z"}]

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   Modal,
   Pressable,
@@ -10,7 +11,6 @@ import {
 } from "react-native";
 import {
   addProfile,
-  checkProfilePassword,
   deleteProfile,
   listProfiles,
   type UserProfile,
@@ -30,11 +30,10 @@ export function ProfilesScreen({
   const [manage, setManage] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<UserProfile | null>(null);
-  const [signing, setSigning] = useState<UserProfile | null>(null);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const busy = useRef(false);
+  const [pending, setPending] = useState<"add" | "delete" | null>(null);
 
   function reload() {
     listProfiles().then(setProfiles).catch(() => setProfiles([]));
@@ -45,9 +44,9 @@ export function ProfilesScreen({
   }, []);
 
   function closeSheets() {
+    if (pending) return;
     setAdding(false);
     setRemoving(null);
-    setSigning(null);
     setName("");
     setPassword("");
     setError("");
@@ -56,55 +55,47 @@ export function ProfilesScreen({
   async function confirmAdd() {
     const next = name.trim();
     const code = password.trim();
-    if (!next || !code || busy.current) return;
-    busy.current = true;
+    if (!next || !code || pending) return;
+    setPending("add");
+    setError("");
     try {
       await addProfile(next, code);
-      closeSheets();
+      setAdding(false);
+      setName("");
+      setPassword("");
+      setError("");
       reload();
     } catch {
       setError("Could not add profile");
     } finally {
-      busy.current = false;
-    }
-  }
-
-  async function confirmEnter() {
-    if (!signing || busy.current) return;
-    busy.current = true;
-    try {
-      const ok = await checkProfilePassword(signing.id, password);
-      if (!ok) {
-        setError("Wrong password");
-        return;
-      }
-      const id = signing.id;
-      closeSheets();
-      onEnter(id);
-    } catch {
-      setError("Could not sign in");
-    } finally {
-      busy.current = false;
+      setPending(null);
     }
   }
 
   async function confirmDelete() {
-    if (!removing || busy.current) return;
-    busy.current = true;
+    if (!removing || pending) return;
+    const code = password.trim();
+    if (!code) {
+      setError("Enter the password");
+      return;
+    }
+    setPending("delete");
+    setError("");
     try {
-      const ok = await deleteProfile(removing.id, password);
+      const ok = await deleteProfile(removing.id, code);
       if (!ok) {
         setError("Wrong password");
-        reload();
         return;
       }
-      closeSheets();
+      setRemoving(null);
+      setPassword("");
+      setError("");
+      setManage(false);
       reload();
     } catch {
       setError("Could not delete profile");
-      reload();
     } finally {
-      busy.current = false;
+      setPending(null);
     }
   }
 
@@ -115,10 +106,11 @@ export function ProfilesScreen({
           <View key={profile.id} style={styles.cell}>
             <Pressable
               onPress={() => {
+                if (pending) return;
                 setPassword("");
                 setError("");
                 if (manage) setRemoving(profile);
-                else setSigning(profile);
+                else onEnter(profile.id);
               }}
               style={styles.avatarWrap}
             >
@@ -134,7 +126,7 @@ export function ProfilesScreen({
                 )}
               </View>
               {manage ? (
-                <View style={styles.remove}>
+                <View style={styles.remove} pointerEvents="none">
                   <Text style={styles.removeText}>×</Text>
                 </View>
               ) : null}
@@ -147,6 +139,7 @@ export function ProfilesScreen({
         <View style={styles.cell}>
           <Pressable
             onPress={() => {
+              if (pending) return;
               setManage(false);
               setPassword("");
               setError("");
@@ -166,8 +159,9 @@ export function ProfilesScreen({
       </Pressable>
 
       <Modal visible={adding} transparent animationType="fade">
-        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={closeSheets}>
-          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <View style={[styles.modalBg, { backgroundColor: c.overlay }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeSheets} />
+          <View style={[styles.sheet, { backgroundColor: c.modal }]}>
             <Text style={[styles.sheetTitle, { color: c.ink }]}>Add profile</Text>
             <TextInput
               value={name}
@@ -175,6 +169,7 @@ export function ProfilesScreen({
               placeholder="Name"
               placeholderTextColor={c.muted}
               autoFocus
+              editable={!pending}
               style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
             />
             <TextInput
@@ -186,43 +181,29 @@ export function ProfilesScreen({
               placeholder="Password"
               placeholderTextColor={c.muted}
               secureTextEntry
+              editable={!pending}
               style={[styles.input, styles.inputGap, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable onPress={confirmAdd} style={[styles.addBtn, { backgroundColor: c.ink }]}>
-              <Text style={[styles.addBtnText, { color: c.bg }]}>Add</Text>
+            <Pressable
+              onPress={confirmAdd}
+              disabled={Boolean(pending)}
+              style={[styles.addBtn, { backgroundColor: c.ink, opacity: pending ? 0.7 : 1 }]}
+            >
+              {pending === "add" ? (
+                <ActivityIndicator color={c.bg} />
+              ) : (
+                <Text style={[styles.addBtnText, { color: c.bg }]}>Add</Text>
+              )}
             </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal visible={Boolean(signing)} transparent animationType="fade">
-        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={closeSheets}>
-          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
-            <Text style={[styles.sheetTitle, { color: c.ink }]}>Sign in {signing?.name}?</Text>
-            <TextInput
-              value={password}
-              onChangeText={(value) => {
-                setPassword(value);
-                setError("");
-              }}
-              placeholder="Password"
-              placeholderTextColor={c.muted}
-              secureTextEntry
-              autoFocus
-              style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
-            />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable onPress={confirmEnter} style={[styles.addBtn, { backgroundColor: c.ink }]}>
-              <Text style={[styles.addBtnText, { color: c.bg }]}>Continue</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={Boolean(removing)} transparent animationType="fade">
-        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={closeSheets}>
-          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <View style={[styles.modalBg, { backgroundColor: c.overlay }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeSheets} />
+          <View style={[styles.sheet, { backgroundColor: c.modal }]}>
             <Text style={[styles.sheetTitle, { color: c.ink }]}>Delete {removing?.name}?</Text>
             <TextInput
               value={password}
@@ -234,14 +215,23 @@ export function ProfilesScreen({
               placeholderTextColor={c.muted}
               secureTextEntry
               autoFocus
+              editable={!pending}
               style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Pressable onPress={confirmDelete} style={[styles.addBtn, { backgroundColor: c.ink }]}>
-              <Text style={[styles.addBtnText, { color: c.bg }]}>Delete</Text>
+            <Pressable
+              onPress={confirmDelete}
+              disabled={Boolean(pending)}
+              style={[styles.addBtn, { backgroundColor: c.ink, opacity: pending ? 0.7 : 1 }]}
+            >
+              {pending === "delete" ? (
+                <ActivityIndicator color={c.bg} />
+              ) : (
+                <Text style={[styles.addBtnText, { color: c.bg }]}>Delete</Text>
+              )}
             </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -323,6 +313,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1C1C1E",
     borderRadius: 16,
     padding: 16,
+    zIndex: 1,
   },
   sheetTitle: { color: "#F4F4F5", fontSize: 16, marginBottom: 12, textAlign: "center" },
   input: {
@@ -341,7 +332,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F4F5",
     borderRadius: 10,
     paddingVertical: 10,
+    minHeight: 42,
     alignItems: "center",
+    justifyContent: "center",
   },
   addBtnText: { color: "#141414", fontSize: 15 },
 });

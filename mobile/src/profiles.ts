@@ -102,7 +102,7 @@ export async function addProfile(name: string, password: string) {
 }
 
 function passwordMatches(stored: unknown, given: string) {
-  return String(stored ?? "") === given.trim();
+  return String(stored ?? "").trim() === given.trim();
 }
 
 export async function checkProfilePassword(id: string, password: string) {
@@ -135,7 +135,7 @@ export async function deleteProfile(id: string, password: string) {
     await Promise.all(rows.docs.map((item) => deleteDoc(item.ref)));
   }
   await deleteDoc(profileRef);
-  await deleteProfileImages(id);
+  deleteProfileImages(id).catch(() => undefined);
   const session = await getSession();
   if (session === id) await setSession(null);
   return true;
