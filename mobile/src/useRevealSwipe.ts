@@ -107,7 +107,6 @@ export function useRevealSwipe({
     captured.current = false;
     start.current = { x: next.pageX, y: next.pageY };
     tapX.current = locationX;
-    lockRef.current?.();
     pan.stopAnimation((value) => {
       offset.current = value;
     });
@@ -122,10 +121,10 @@ export function useRevealSwipe({
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       if (Math.abs(dx) <= Math.abs(dy)) {
         dragging.current = false;
-        unlockRef.current?.();
         return;
       }
       captured.current = true;
+      lockRef.current?.();
     }
     pan.setValue(Math.max(0, Math.min(widthRef.current, offset.current + dx)));
   }
@@ -153,7 +152,7 @@ export function useRevealSwipe({
     if (Platform.OS !== "web" || !enabled) return;
     const el = host;
     if (!el) return;
-    el.style.touchAction = "none";
+    el.style.touchAction = "pan-y";
     (el.style as CSSStyleDeclaration & { webkitUserSelect?: string }).webkitUserSelect = "none";
 
     const locX = (event: TouchEvent | PointerEvent | MouseEvent) => {
@@ -206,14 +205,29 @@ export function useRevealSwipe({
     };
   }, [enabled, host]);
 
+  const nativeStart = useRef({ x: 0, y: 0, locationX: 0 });
   const handlers =
     Platform.OS === "web"
       ? {}
       : {
-          onStartShouldSetResponder: () => enabled,
-          onMoveShouldSetResponder: () => enabled,
+          onStartShouldSetResponder: () => false,
+          onMoveShouldSetResponder: (event: { nativeEvent: Record<string, number> }) => {
+            if (!enabled) return false;
+            const next = fromNative({ nativeEvent: event.nativeEvent });
+            const dx = next.pageX - nativeStart.current.x;
+            const dy = next.pageY - nativeStart.current.y;
+            return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy);
+          },
+          onTouchStart: (event: { nativeEvent: Record<string, number> }) => {
+            const next = fromNative({ nativeEvent: event.nativeEvent });
+            nativeStart.current = {
+              x: next.pageX,
+              y: next.pageY,
+              locationX: Number(event.nativeEvent.locationX ?? 0),
+            };
+          },
           onResponderGrant: (event: { nativeEvent: Record<string, number> }) =>
-            grant(fromNative({ nativeEvent: event.nativeEvent }), Number(event.nativeEvent.locationX ?? 0)),
+            grant(fromNative({ nativeEvent: event.nativeEvent }), nativeStart.current.locationX),
           onResponderMove: (event: { nativeEvent: Record<string, number> }) =>
             move(fromNative({ nativeEvent: event.nativeEvent })),
           onResponderRelease: (event: { nativeEvent: Record<string, number> }) =>
@@ -228,7 +242,7 @@ export function useRevealSwipe({
     pan,
     nodeRef: bindRef,
     handlers,
-    style: Platform.OS === "web" ? ({ touchAction: "none", userSelect: "none" } as const) : undefined,
+    style: Platform.OS === "web" ? ({ touchAction: "pan-y", userSelect: "none" } as const) : undefined,
   };
 }
 
