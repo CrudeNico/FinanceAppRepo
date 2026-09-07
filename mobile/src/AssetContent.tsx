@@ -241,6 +241,7 @@ export function AssetContent({ stock }: { stock?: ListedStock }) {
             entries={entries}
             onChange={persist}
             onSwipe={setScrubbing}
+            ready={ready}
             onAdded={() => {
               revealAfterLayout.current = true;
             }}

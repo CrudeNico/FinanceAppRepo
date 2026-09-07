@@ -1,6 +1,7 @@
 import { forwardRef, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -47,11 +48,13 @@ export function AssetHistory({
   onChange,
   onAdded,
   onSwipe,
+  ready = true,
 }: {
   entries: AssetEntry[];
   onChange: (entries: AssetEntry[]) => void;
   onAdded?: () => void;
   onSwipe?: (active: boolean) => void;
+  ready?: boolean;
 }) {
   const { colors: c } = useTheme();
   const latestYear = Math.max(yearOf(todayIso()), ...entries.map((entry) => yearOf(entry.date)));
@@ -59,6 +62,10 @@ export function AssetHistory({
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
   const [swipeOn, setSwipeOn] = useState(true);
+  const [startAmount, setStartAmount] = useState("");
+  const startRow = entries.find(isStart) ?? null;
+  const rest = entries.filter((entry) => !isStart(entry));
+  const askStart = ready && rest.length === 0 && (!startRow || startRow.amount.trim() === "");
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.date)));
@@ -73,14 +80,9 @@ export function AssetHistory({
   }
 
   function addRow() {
-    const start = entries.find(isStart);
-    if (!start) {
-      onChange([{ id: START_ID, date: todayIso(), amount: "", kind: "start" }, ...entries]);
-    } else {
-      if (start.amount.trim() === "") return;
-      if (entries.some((entry) => entry.amount.trim() === "")) return;
-      onChange([{ id: `h${Date.now()}`, date: todayIso(), amount: "", kind: "inc" }, ...entries]);
-    }
+    if (!startRow || startRow.amount.trim() === "") return;
+    if (entries.some((entry) => entry.amount.trim() === "")) return;
+    onChange([{ id: `h${Date.now()}`, date: todayIso(), amount: "", kind: "inc" }, ...entries]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     setOpenSwipe(null);
     setSwipeOn(false);
@@ -93,10 +95,19 @@ export function AssetHistory({
   }
 
   function remove(id: string) {
-    const row = entries.find((entry) => entry.id === id);
-    if (!row || isStart(row)) return;
     onChange(entries.filter((entry) => entry.id !== id));
     setOpenSwipe(null);
+  }
+
+  function confirmStart() {
+    const amount = startAmount.trim();
+    if (amount === "") return;
+    onChange([{ id: START_ID, date: todayIso(), amount, kind: "start" }, ...rest]);
+    setStartAmount("");
+    const date = todayIso();
+    setOpenYears((current) =>
+      current.includes(yearOf(date)) ? current : [yearOf(date), ...current],
+    );
   }
 
   const calendarEntry = entries.find((entry) => entry.id === calendarFor) ?? null;
@@ -112,7 +123,9 @@ export function AssetHistory({
       </View>
 
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
-        {years.map((year) => {
+        {askStart
+          ? null
+          : years.map((year) => {
           const open = openYears.includes(year);
           const rows = entries
             .filter((entry) => yearOf(entry.date) === year)
@@ -152,11 +165,9 @@ export function AssetHistory({
                           key={entry.id}
                           entry={entry}
                           last={index === rows.length - 1}
-                          open={!isStart(entry) && openSwipe === entry.id}
-                          enabled={swipeOn && !isStart(entry)}
-                          onOpen={() => {
-                            if (!isStart(entry)) setOpenSwipe(entry.id);
-                          }}
+                          open={openSwipe === entry.id}
+                          enabled={swipeOn}
+                          onOpen={() => setOpenSwipe(entry.id)}
                           onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
                           onDelete={() => remove(entry.id)}
                           onDate={() => setCalendarFor(entry.id)}
@@ -172,6 +183,33 @@ export function AssetHistory({
           );
         })}
       </View>
+
+      <Modal visible={askStart} transparent animationType="fade">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
+        >
+          <View>
+            <View style={[modalCenter.sheet, { backgroundColor: c.modal }]}>
+              <Text style={[styles.sheetTitle, { color: c.ink }]}>What is the cost of this asset?</Text>
+              <Text style={[styles.fieldLabel, { color: c.muted }]}>Amount</Text>
+              <TextInput
+                value={startAmount}
+                onChangeText={setStartAmount}
+                placeholder="0"
+                placeholderTextColor={c.muted}
+                keyboardType={Platform.OS === "web" ? "default" : "decimal-pad"}
+                inputMode="decimal"
+                autoFocus
+                style={[styles.fieldInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
+              />
+              <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={confirmStart}>
+                <Text style={[styles.doneText, { color: c.bg }]}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal
         visible={Boolean(calendarEntry)}
@@ -223,7 +261,6 @@ function AssetRow({
   onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
-  const rowWidth = useRef(0);
   const amountRef = useRef<TextInput>(null);
   const start = isStart(entry);
   const back = useLockBackGesture();
@@ -242,10 +279,8 @@ function AssetRow({
       onSwipe?.(false);
     },
     onTap: (x) => {
-      const dateW = 62;
-      const typeW = 64;
-      if (x < dateW) onDate();
-      else if (x < dateW + typeW) {
+      if (x < 62) onDate();
+      else if (x < 126) {
         if (!start) onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
       } else amountRef.current?.focus();
     },
@@ -264,15 +299,16 @@ function AssetRow({
           { backgroundColor: c.card, transform: [{ translateX: pan }] },
           swipeStyle,
         ]}
-        onLayout={(event) => {
-          rowWidth.current = event.nativeEvent.layout.width;
-        }}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
           <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
         </Pressable>
         <Pressable
           onPress={() => {
+            if (open) {
+              onClose();
+              return;
+            }
             if (start) return;
             onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
           }}
@@ -512,6 +548,25 @@ const styles = StyleSheet.create({
   typeText: { fontSize: 13, fontWeight: "600" },
   input: { color: INK, fontSize: 13, paddingVertical: 8, paddingHorizontal: 6 },
   empty: { color: MUTED, fontSize: 12, paddingVertical: 8, paddingHorizontal: 8 },
+  sheetTitle: { color: INK, fontSize: 18, fontWeight: "600", marginBottom: 14 },
+  fieldLabel: { color: MUTED, fontSize: 11, fontWeight: "600", marginBottom: 4 },
+  fieldInput: {
+    color: INK,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: LINE,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  doneBtn: {
+    marginTop: 14,
+    backgroundColor: INK,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  doneText: { color: "#ffffff", fontSize: 15 },
   calHead: {
     flexDirection: "row",
     alignItems: "center",
