@@ -169,7 +169,13 @@ export function mergeValueSeries(seriesList: PricePoint[][]) {
 }
 
 export function tradingStats(entries: import("./models").TradeRow[]) {
-  const chronological = [...entries].sort((a, b) => a.month.localeCompare(b.month));
+  const chronological = [...entries].sort((a, b) => {
+    const byMonth = a.month.localeCompare(b.month);
+    if (byMonth !== 0) return byMonth;
+    if (a.id === "t-start") return -1;
+    if (b.id === "t-start") return 1;
+    return a.id.localeCompare(b.id);
+  });
   let running = 0;
   let profit = 0;
   const prices: PricePoint[] = [];

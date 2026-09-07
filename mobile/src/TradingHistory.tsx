@@ -22,6 +22,7 @@ const MUTED = "#9CA3AF";
 const LINE = "#E8E8E8";
 const RED = "#DC2626";
 const ACTION = 68;
+const START_ID = "t-start";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export type { TradeRow };
@@ -38,6 +39,10 @@ function yearOf(month: string) {
 function monthLabel(month: string) {
   const index = Number(month.slice(5, 7)) - 1;
   return MONTHS[index] ?? month;
+}
+
+function isStart(entry: TradeRow) {
+  return entry.id === START_ID;
 }
 
 function toNumber(value: string) {
@@ -65,11 +70,13 @@ export function TradingHistory({
   entries,
   onChange,
   onAdded,
+  ready = true,
   onSwipe,
 }: {
   entries: TradeRow[];
   onChange: (entries: TradeRow[]) => void;
   onAdded?: () => void;
+  ready?: boolean;
   onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
@@ -80,7 +87,11 @@ export function TradingHistory({
   const [profitFor, setProfitFor] = useState<string | null>(null);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [swipeOn, setSwipeOn] = useState(true);
+  const [startAmount, setStartAmount] = useState("");
   const back = useLockBackGesture();
+  const startRow = entries.find(isStart) ?? null;
+  const rest = entries.filter((entry) => !isStart(entry));
+  const askStart = ready && !startRow && rest.length === 0;
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.month)));
@@ -89,7 +100,12 @@ export function TradingHistory({
   }, [entries]);
 
   const endings = useMemo(() => {
-    const chronological = [...entries].sort((a, b) => a.month.localeCompare(b.month));
+    const chronological = [...entries].sort((a, b) => {
+      const byMonth = a.month.localeCompare(b.month);
+      if (byMonth !== 0) return byMonth;
+      if (isStart(a) !== isStart(b)) return isStart(a) ? -1 : 1;
+      return a.id.localeCompare(b.id);
+    });
     const map: Record<string, number> = {};
     let running = 0;
     chronological.forEach((entry) => {
@@ -110,21 +126,24 @@ export function TradingHistory({
   }
 
   function monthComplete(entry: TradeRow) {
+    if (isStart(entry)) return entry.deposit.trim() !== "";
     const profitDone = entry.gain.trim() !== "" || entry.loss.trim() !== "";
     const flowDone = entry.deposit.trim() !== "" || entry.withdrawal.trim() !== "";
     return profitDone && flowDone;
   }
 
   function addRow() {
-    if (entries.some((entry) => !monthComplete(entry))) return;
+    if (!startRow || (startRow.deposit ?? "").trim() === "") return;
+    if (rest.some((entry) => !monthComplete(entry))) return;
     const month = todayMonth();
-    if (entries.some((entry) => entry.month === month)) return;
+    if (rest.some((entry) => entry.month === month)) return;
     const id = `t${Date.now()}`;
     onChange([
       { id, month, gain: "", loss: "", deposit: "", withdrawal: "" },
       ...entries,
     ]);
-    setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
+    const year = yearOf(month);
+    setOpenYears((current) => (current.includes(year) ? current : [year, ...current]));
     setOpenSwipe(null);
     setSwipeOn(false);
     setTimeout(() => setSwipeOn(true), 400);
@@ -136,8 +155,29 @@ export function TradingHistory({
   }
 
   function remove(id: string) {
+    if (id === START_ID || entries.some((entry) => entry.id === id && isStart(entry))) return;
     onChange(entries.filter((entry) => entry.id !== id));
     setOpenSwipe(null);
+  }
+
+  function confirmStart() {
+    const amount = startAmount.trim();
+    if (amount === "") return;
+    const month = todayMonth();
+    onChange([
+      {
+        id: START_ID,
+        month,
+        gain: "",
+        loss: "",
+        deposit: amount,
+        withdrawal: "",
+      },
+      ...rest,
+    ]);
+    setStartAmount("");
+    const year = yearOf(month);
+    setOpenYears((current) => (current.includes(year) ? current : [year, ...current]));
   }
 
   const picker = entries.find((entry) => entry.id === monthFor) ?? null;
@@ -154,11 +194,18 @@ export function TradingHistory({
       </View>
 
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
-        {years.map((year) => {
+        {askStart
+          ? null
+          : years.map((year) => {
           const open = openYears.includes(year);
           const rows = entries
             .filter((entry) => yearOf(entry.month) === year)
-            .sort((a, b) => (a.month < b.month ? 1 : -1));
+            .sort((a, b) => {
+              const byMonth = b.month.localeCompare(a.month);
+              if (byMonth !== 0) return byMonth;
+              if (isStart(a) !== isStart(b)) return isStart(a) ? 1 : -1;
+              return b.id.localeCompare(a.id);
+            });
           return (
             <View key={year} style={styles.yearBlock}>
               <Pressable onPress={() => toggleYear(year)} style={styles.yearHead}>
@@ -187,6 +234,7 @@ export function TradingHistory({
                         entry={entry}
                         end={endings[entry.id]?.toFixed(2) ?? "0.00"}
                         last={index === rows.length - 1}
+                        locked={isStart(entry)}
                         enabled={swipeOn}
                         open={openSwipe === entry.id}
                         onOpen={() => setOpenSwipe(entry.id)}
@@ -195,7 +243,9 @@ export function TradingHistory({
                         }
                         onDelete={() => remove(entry.id)}
                         onMonth={() => setMonthFor(entry.id)}
-                        onProfit={() => setProfitFor(entry.id)}
+                        onProfit={() => {
+                          if (!isStart(entry)) setProfitFor(entry.id);
+                        }}
                         onFlow={() => setFlowFor(entry.id)}
                         onSwipe={onSwipe}
                       />
@@ -207,6 +257,32 @@ export function TradingHistory({
           );
         })}
       </View>
+
+      <Modal visible={askStart} transparent animationType="fade">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
+        >
+          <View>
+            <View style={[modalCenter.sheet, { backgroundColor: c.modal }]}>
+              <Text style={[styles.sheetTitle, { color: c.ink }]}>What is your starting balance?</Text>
+              <Text style={[styles.fieldLabel, { color: c.muted }]}>Amount</Text>
+              <TextInput
+                value={startAmount}
+                onChangeText={setStartAmount}
+                placeholder="0"
+                placeholderTextColor={c.muted}
+                keyboardType="decimal-pad"
+                autoFocus
+                style={[styles.fieldInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
+              />
+              <Pressable style={[styles.doneBtn, { backgroundColor: c.ink }]} onPress={confirmStart}>
+                <Text style={[styles.doneText, { color: c.bg }]}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal
         visible={Boolean(profitRow)}
@@ -344,6 +420,7 @@ function TradeHistoryRow({
   entry,
   end,
   last,
+  locked,
   enabled,
   open,
   onOpen,
@@ -357,6 +434,7 @@ function TradeHistoryRow({
   entry: TradeRow;
   end: string;
   last: boolean;
+  locked?: boolean;
   enabled: boolean;
   open: boolean;
   onOpen: () => void;
@@ -371,7 +449,7 @@ function TradeHistoryRow({
   const back = useLockBackGesture();
   const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
     open,
-    enabled,
+    enabled: enabled && !locked,
     width: ACTION,
     onOpen,
     onClose,
@@ -385,18 +463,21 @@ function TradeHistoryRow({
     },
     onTap: (x) => {
       if (x < 52) onMonth();
-      else if (x < 160) onProfit();
-      else onFlow();
+      else if (x < 160) {
+        if (!locked) onProfit();
+      } else onFlow();
     },
   });
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
+      {locked ? null : (
       <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
         <Pressable onPress={onDelete} style={styles.deleteBtn}>
           <TrashIcon color="#ffffff" />
         </Pressable>
       </View>
+      )}
       <Animated.View
         style={[
           styles.tableRow,
@@ -408,7 +489,7 @@ function TradeHistoryRow({
           <Text style={[styles.monthText, { color: c.ink }]}>{monthLabel(entry.month)}</Text>
         </Pressable>
         <Pressable
-          onPress={open ? onClose : onProfit}
+          onPress={locked ? undefined : open ? onClose : onProfit}
           style={[styles.numCol, styles.colLine, styles.flowCell, { borderLeftColor: c.line }]}
         >
           <Text style={[styles.flowText, { color: profitLabel(entry) === "—" ? c.muted : c.ink }]}>
@@ -424,12 +505,14 @@ function TradeHistoryRow({
           </Text>
         </Pressable>
         <Text style={[styles.endText, styles.endCol, styles.colLine, { color: c.ink, borderLeftColor: c.line }]}>{end}</Text>
+        {locked ? null : (
         <View
           ref={nodeRef}
           collapsable={false}
           style={[StyleSheet.absoluteFill, swipeStyle]}
           {...handlers}
         />
+        )}
       </Animated.View>
     </View>
   );
@@ -586,6 +669,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   doneText: { color: "#ffffff", fontSize: 15 },
+  sheetTitle: { color: INK, fontSize: 15, marginBottom: 12, textAlign: "center" },
+  fieldLabel: { color: MUTED, fontSize: 11, fontWeight: "600", marginBottom: 4 },
+  fieldInput: {
+    color: INK,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: LINE,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   endText: { color: INK, fontSize: 13, paddingHorizontal: 6, paddingVertical: 8 },
   empty: { color: MUTED, fontSize: 12, paddingVertical: 8, paddingHorizontal: 8 },
   modalBg: {

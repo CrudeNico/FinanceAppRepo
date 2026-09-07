@@ -290,6 +290,7 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
       >
         <TradingHistory
           entries={entries}
+          ready={ready}
           onChange={persistMonths}
           onSwipe={setScrubbing}
           onAdded={() => {
