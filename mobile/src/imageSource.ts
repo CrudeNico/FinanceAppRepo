@@ -8,3 +8,7 @@ export function imageSource(uri?: string | null) {
   cache.set(uri, next);
   return next;
 }
+
+export function forgetImage(uri?: string | null) {
+  if (uri) cache.delete(uri);
+}

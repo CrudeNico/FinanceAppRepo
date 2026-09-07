@@ -2,7 +2,7 @@ import { Image, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { ScreenBack } from "./ScreenBack";
 import * as ImagePicker from "expo-image-picker";
 import { persistLogo } from "./db";
-import { imageSource } from "./imageSource";
+import { forgetImage, imageSource } from "./imageSource";
 import { getActiveProfile } from "./profiles";
 import { useSession } from "./SessionContext";
 import { useTheme } from "./theme";
@@ -24,7 +24,9 @@ export function SettingsScreen({
     });
     if (!result.canceled && result.assets[0]?.uri) {
       const id = getActiveProfile()?.id ?? "profile";
-      const uri = await persistLogo(`avatar-${id}`, result.assets[0].uri);
+      const uri = await persistLogo(`avatar-${id}`, result.assets[0].uri, avatar);
+      if (!uri) return;
+      forgetImage(avatar);
       setAvatar(uri);
     }
   }

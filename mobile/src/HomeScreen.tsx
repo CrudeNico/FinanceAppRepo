@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 import { confirmAction } from "./confirmAction";
-import { imageSource } from "./imageSource";
+import { forgetImage, imageSource } from "./imageSource";
 import { useRevealSwipe } from "./useRevealSwipe";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
@@ -237,9 +237,13 @@ function CardSection({
     const saved = { ...item, saved: true, saving: true };
     setItems((current) => current.map((entry) => (entry.id === id ? saved : entry)));
     try {
-      await upsertCard(kind, saved);
+      let image = saved.image;
+      if (image && (image.startsWith("blob:") || image.startsWith("file:"))) {
+        image = (await persistLogo(id, image)) || null;
+      }
+      await upsertCard(kind, { ...saved, image });
       setItems((current) =>
-        current.map((entry) => (entry.id === id ? { ...entry, saving: false } : entry)),
+        current.map((entry) => (entry.id === id ? { ...entry, image, saving: false } : entry)),
       );
     } catch {
       setItems((current) =>
@@ -250,13 +254,14 @@ function CardSection({
     }
   }
 
-  function updateItem(id: string, patch: Partial<ListedStock>) {
+  async function updateItem(id: string, patch: Partial<ListedStock>) {
+    let saved: ListedStock | undefined;
     setItems((current) => {
       const next = current.map((item) => (item.id === id ? { ...item, ...patch } : item));
-      const saved = next.find((item) => item.id === id && item.saved);
-      if (saved) upsertCard(kind, saved);
+      saved = next.find((item) => item.id === id && item.saved);
       return next;
     });
+    if (saved) await upsertCard(kind, saved);
   }
 
   function askRemove(item: ListedStock) {
@@ -275,8 +280,11 @@ function CardSection({
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]?.uri) {
-      const image = await persistLogo(id, result.assets[0].uri);
-      updateItem(id, { image });
+      const previous = items.find((item) => item.id === id)?.image ?? null;
+      const image = await persistLogo(id, result.assets[0].uri, previous);
+      if (!image) return;
+      forgetImage(previous);
+      await updateItem(id, { image });
     }
   }
 

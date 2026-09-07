@@ -6,7 +6,7 @@ import {
   getDocs,
   setDoc,
 } from "firebase/firestore";
-import { closeDb, getSetting, initDb, persistLogo, setSetting } from "./db";
+import { closeDb, deleteProfileImages, getSetting, initDb, persistLogo, setSetting } from "./db";
 import { getFirestoreDb } from "./firebase";
 
 export type UserProfile = {
@@ -135,6 +135,7 @@ export async function deleteProfile(id: string, password: string) {
     await Promise.all(rows.docs.map((item) => deleteDoc(item.ref)));
   }
   await deleteDoc(profileRef);
+  await deleteProfileImages(id);
   const session = await getSession();
   if (session === id) await setSession(null);
   return true;
@@ -146,7 +147,8 @@ export async function updateProfileAvatar(id: string, uri: string | null) {
 }
 
 export async function saveProfilePhoto(id: string, uri: string) {
-  const stored = await persistLogo(`avatar-${id}`, uri);
-  await updateProfileAvatar(id, stored);
+  const previous = (await listProfiles()).find((item) => item.id === id)?.avatar ?? null;
+  const stored = await persistLogo(`avatar-${id}`, uri, previous);
+  await updateProfileAvatar(id, stored || null);
   return stored;
 }

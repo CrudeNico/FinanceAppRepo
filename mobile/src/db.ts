@@ -11,9 +11,17 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import {
+  deleteObject,
+  getDownloadURL,
+  listAll,
+  ref,
+  uploadBytes,
+  type StorageReference,
+} from "firebase/storage";
 import { INITIAL_HISTORY } from "./assetData";
 import { DEFAULT_CATEGORY_GROUPS, type CategoryGroup } from "./cashflowCategories";
-import { getFirestoreDb } from "./firebase";
+import { getFirebaseStorage, getFirestoreDb } from "./firebase";
 import type { CashflowEntry, DayEntry, TradeRow } from "./models";
 import { INITIAL_STOCKS, type ListedStock } from "./stockList";
 
@@ -177,6 +185,8 @@ export async function upsertCard(kind: CardKind, card: ListedStock) {
 }
 
 export async function deleteCard(id: string) {
+  const snap = await getDoc(item("cards", id));
+  await deleteStoredImage(snap.data()?.image);
   await deleteDoc(item("cards", id));
 }
 
@@ -351,18 +361,64 @@ export async function setSetting(key: string, value: string) {
   await setDoc(item("settings", key), { key, value });
 }
 
-export async function persistLogo(id: string, uri: string) {
-  if (uri.startsWith("data:")) return uri;
-  if (Platform.OS === "web" || uri.startsWith("blob:")) {
-    try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const dataUrl = await blobToDataUrl(blob);
-      if (dataUrl) return dataUrl;
-    } catch {
-      return uri.startsWith("blob:") ? "" : uri;
-    }
+export async function persistLogo(id: string, uri: string, previous?: string | null) {
+  const blob = await readAsBlob(uri);
+  const jpeg = await compressJpeg(blob);
+  const stored = (await uploadLogo(id, jpeg)) || (await dataUrlIfSmall(jpeg)) || (await copyLocal(id, uri));
+  if (previous && previous !== stored) await deleteStoredImage(previous);
+  if (!stored || stored.startsWith("blob:")) return "";
+  return stored;
+}
+
+export async function deleteStoredImage(uri?: string | null) {
+  if (!uri || !isStorageUrl(uri)) return;
+  try {
+    await deleteObject(ref(getFirebaseStorage(), uri));
+  } catch {
+    return;
   }
+}
+
+export async function deleteProfileImages(profileId: string) {
+  try {
+    await wipeFolder(ref(getFirebaseStorage(), `profiles/${profileId}`));
+  } catch {
+    return;
+  }
+}
+
+async function wipeFolder(folder: StorageReference) {
+  const listed = await listAll(folder);
+  await Promise.all(listed.items.map((file) => deleteObject(file)));
+  await Promise.all(listed.prefixes.map((child) => wipeFolder(child)));
+}
+
+function isStorageUrl(uri: string) {
+  return uri.includes("firebasestorage.googleapis.com") || uri.includes("firebasestorage.app");
+}
+
+async function uploadLogo(id: string, blob: Blob) {
+  if (!activeId) return "";
+  try {
+    const fileRef = ref(getFirebaseStorage(), `profiles/${activeId}/logos/${id}-${Date.now()}.jpg`);
+    await uploadBytes(fileRef, blob, { contentType: "image/jpeg" });
+    return await getDownloadURL(fileRef);
+  } catch {
+    return "";
+  }
+}
+
+async function dataUrlIfSmall(blob: Blob) {
+  if (blob.size > 700_000) return "";
+  try {
+    return await blobToDataUrl(blob);
+  } catch {
+    return "";
+  }
+}
+
+async function copyLocal(id: string, uri: string) {
+  if (Platform.OS === "web" || uri.startsWith("blob:") || uri.startsWith("data:")) return "";
   try {
     const folder = new Directory(Paths.document, "logos");
     if (!folder.exists) folder.create();
@@ -372,8 +428,51 @@ export async function persistLogo(id: string, uri: string) {
     await new File(uri).copy(dest);
     return dest.uri;
   } catch {
-    return uri.startsWith("blob:") ? "" : uri;
+    return "";
   }
+}
+
+async function readAsBlob(uri: string) {
+  const response = await fetch(uri);
+  return response.blob();
+}
+
+async function compressJpeg(blob: Blob) {
+  if (typeof document === "undefined") return blob;
+  return new Promise<Blob>((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const max = 256;
+      let width = img.width;
+      let height = img.height;
+      if (width > height && width > max) {
+        height = Math.round((height * max) / width);
+        width = max;
+      } else if (height > max) {
+        width = Math.round((width * max) / height);
+        height = max;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx?.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (next) => {
+          URL.revokeObjectURL(url);
+          resolve(next ?? blob);
+        },
+        "image/jpeg",
+        0.72,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(blob);
+    };
+    img.src = url;
+  });
 }
 
 function blobToDataUrl(blob: Blob) {
