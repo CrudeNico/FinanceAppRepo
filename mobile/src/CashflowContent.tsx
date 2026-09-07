@@ -963,7 +963,7 @@ const styles = StyleSheet.create({
   meta: { color: MUTED, fontSize: 11, letterSpacing: 0.2 },
   metaDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#D1D5DB" },
   name: { color: INK, fontSize: 14, fontWeight: "700", marginTop: 1, lineHeight: 18 },
-  price: { color: INK, fontSize: 52, fontWeight: "400", marginTop: 18, letterSpacing: -1.4, lineHeight: 56 },
+  price: { fontSize: 52, fontWeight: "400", marginTop: 18, letterSpacing: -1.4, lineHeight: 56 },
   euro: { fontSize: 34, fontWeight: "400" },
   change: { color: GREEN, fontSize: 16, marginTop: 0 },
   chartWrap: { marginTop: 10, marginRight: -8, position: "relative" },

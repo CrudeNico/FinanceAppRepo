@@ -13,7 +13,7 @@ export function MoneyAmount({
 }) {
   const text = Math.abs(value).toFixed(2);
   return (
-    <Text style={[{ color }, style]}>
+    <Text style={[style, color ? { color } : null]}>
       {value < 0 ? "−" : null}
       <Text style={euroStyle}>€</Text>
       {text.slice(0, -3)}

@@ -7,7 +7,7 @@ import { useTheme } from "./theme";
 export function ScreenBack() {
   const navigation = useNavigation();
   const { colors: c, dark } = useTheme();
-  const border = dark ? "#22C55E" : "#E5E7EB";
+  const border = dark ? "#FFFFFF" : "#E5E7EB";
 
   function goBack() {
     navigation.goBack();
