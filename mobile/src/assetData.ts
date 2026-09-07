@@ -59,7 +59,7 @@ export function seriesFor(range: RangeKey) {
 }
 
 export function toAmount(value: string) {
-  const parsed = Number(value);
+  const parsed = Number(value.trim().replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
@@ -264,14 +264,6 @@ export function formatCompact(value: number) {
   const n = Number.isFinite(value) ? value : 0;
   if (Math.abs(n) >= 1000) return String(Math.round(n));
   return n.toFixed(2);
-}
-
-export function compactAmountText(raw: string) {
-  const trimmed = raw.trim().replace(",", ".");
-  if (trimmed === "") return raw;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n) || Math.abs(n) < 1000) return raw;
-  return String(Math.round(n));
 }
 
 export function formatEuro(value: number, digits?: number) {

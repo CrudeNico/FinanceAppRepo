@@ -2,6 +2,7 @@ import { forwardRef, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,7 +11,6 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
-  compactAmountText,
   formatDayMonth,
   todayIso,
   yearOf,
@@ -286,14 +286,11 @@ const Field = forwardRef<
     <TextInput
       ref={ref}
       value={value}
-          onChangeText={onChange}
-          onBlur={() => {
-            const next = compactAmountText(value);
-            if (next !== value) onChange(next);
-          }}
+      onChangeText={onChange}
       placeholder="—"
       placeholderTextColor={c.muted}
-      keyboardType="decimal-pad"
+      keyboardType={Platform.OS === "web" ? "default" : "decimal-pad"}
+      inputMode="decimal"
       style={[styles.input, { color: c.ink }, style]}
     />
   );

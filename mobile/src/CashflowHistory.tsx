@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { compactAmountText, formatDayMonth, todayIso, yearOf } from "./assetData";
+import { formatDayMonth, todayIso, yearOf } from "./assetData";
 import type { CategoryGroup } from "./cashflowCategories";
 import { CategoryManager, CategoryPicker, TagIcon } from "./CashflowCategorySheet";
 import { loadCategoryGroups, saveCategoryGroups } from "./db";
@@ -277,7 +277,8 @@ export function CashflowHistory({
                 onChangeText={setStartAmount}
                 placeholder="0"
                 placeholderTextColor={c.muted}
-                keyboardType="decimal-pad"
+                keyboardType={Platform.OS === "web" ? "default" : "decimal-pad"}
+                inputMode="decimal"
                 autoFocus
                 style={[styles.fieldInput, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
               />
@@ -423,13 +424,10 @@ function FlowRow({
           ref={amountRef}
           value={entry.amount}
           onChangeText={onAmount}
-          onBlur={() => {
-            const next = compactAmountText(entry.amount);
-            if (next !== entry.amount) onAmount(next);
-          }}
           placeholder="—"
           placeholderTextColor={c.muted}
-          keyboardType="decimal-pad"
+          keyboardType={Platform.OS === "web" ? "default" : "decimal-pad"}
+          inputMode="decimal"
           editable={!open}
           style={[
             styles.amtCol,
