@@ -22,7 +22,7 @@ export type Colors = {
 
 export const light: Colors = {
   bg: "#ffffff",
-  bgHome: "#E6E6E6",
+  bgHome: "#ffffff",
   ink: "#111111",
   muted: "#9CA3AF",
   line: "#E5E7EB",
@@ -66,6 +66,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>("light");
   const [avatar, setAvatarState] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     Promise.all([getSetting("theme"), getSetting("avatar")])
@@ -73,7 +74,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (theme === "dark" || theme === "light") setModeState(theme);
         if (nextAvatar) setAvatarState(nextAvatar);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setReady(true));
   }, []);
 
   const value = useMemo<ThemeContextValue>(
@@ -96,6 +98,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }),
     [avatar, mode],
   );
+
+  if (!ready) return null;
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

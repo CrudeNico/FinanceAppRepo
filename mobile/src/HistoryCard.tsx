@@ -1,8 +1,7 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Modal,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -17,7 +16,8 @@ import {
   type HistoryEntry,
 } from "./assetData";
 import { useTheme } from "./theme";
-import { useLockBackGesture } from "./useLockBackGesture";
+import { modalCenter } from "./modalCenter";
+import { useRevealSwipe } from "./useRevealSwipe";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -30,10 +30,12 @@ export function HistoryCard({
   entries,
   onChange,
   onAdded,
+  onSwipe,
 }: {
   entries: HistoryEntry[];
   onChange: (entries: HistoryEntry[]) => void;
   onAdded?: () => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
   const latestYear = Math.max(yearOf(todayIso()), ...entries.map((entry) => yearOf(entry.date)));
@@ -124,6 +126,7 @@ export function HistoryCard({
                         onDelete={() => remove(entry.id)}
                         onDate={() => setCalendarFor(entry.id)}
                         onUpdate={(patch) => update(entry.id, patch)}
+                        onSwipe={onSwipe}
                       />
                     ))
                   )}
@@ -140,8 +143,8 @@ export function HistoryCard({
         animationType="fade"
         onRequestClose={() => setCalendarFor(null)}
       >
-        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
-          <Pressable style={[styles.calendar, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <Pressable style={[modalCenter.bg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             {calendarEntry ? (
               <MiniCalendar
                 value={calendarEntry.date}
@@ -169,6 +172,7 @@ function HistoryRow({
   onDelete,
   onDate,
   onUpdate,
+  onSwipe,
 }: {
   entry: HistoryEntry;
   last: boolean;
@@ -178,97 +182,43 @@ function HistoryRow({
   onDelete: () => void;
   onDate: () => void;
   onUpdate: (patch: Partial<HistoryEntry>) => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
-  const pan = useRef(new Animated.Value(0)).current;
-  const offset = useRef(0);
-  const touchX = useRef(0);
   const rowWidth = useRef(0);
   const amountRef = useRef<TextInput>(null);
   const priceRef = useRef<TextInput>(null);
   const fxRef = useRef<TextInput>(null);
-  const openRef = useRef(onOpen);
-  const closeRef = useRef(onClose);
-  const dateRef = useRef(onDate);
   const back = useLockBackGesture();
-  openRef.current = onOpen;
-  closeRef.current = onClose;
-  dateRef.current = onDate;
-
-  function snap(shouldOpen: boolean) {
-    const toValue = shouldOpen ? ACTION : 0;
-    offset.current = toValue;
-    Animated.timing(pan, {
-      toValue,
-      duration: 120,
-      useNativeDriver: true,
-    }).start();
-    if (shouldOpen) openRef.current();
-    else closeRef.current();
-  }
-
-  useEffect(() => {
-    if (!open) {
-      offset.current = 0;
-      Animated.timing(pan, { toValue: 0, duration: 120, useNativeDriver: true }).start();
-    }
-  }, [open, pan]);
-
-  const responder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (event) => {
-        back.lock();
-        touchX.current = event.nativeEvent.locationX;
-        pan.stopAnimation((value) => {
-          offset.current = value;
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        if (Math.abs(gesture.dx) < 2) return;
-        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        back.unlock();
-        if (Math.abs(gesture.dx) < 8 && Math.abs(gesture.dy) < 8) {
-          if (offset.current > ACTION / 2) {
-            closeRef.current();
-            return;
-          }
-          const x = touchX.current;
-          const width = rowWidth.current || 1;
-          const dateW = 62;
-          const fxW = 52;
-          const mid = Math.max((width - dateW - fxW) / 2, 1);
-          if (x < dateW) dateRef.current();
-          else if (x < dateW + mid) amountRef.current?.focus();
-          else if (x < dateW + mid + mid) priceRef.current?.focus();
-          else fxRef.current?.focus();
-          return;
-        }
-        if (gesture.dx > 8 || gesture.vx > 0.12) snap(true);
-        else if (gesture.dx < -8 || gesture.vx < -0.12) snap(false);
-        else snap(offset.current + gesture.dx > ACTION / 2);
-      },
-      onPanResponderTerminate: () => {
-        back.unlock();
-      },
-    }),
-  ).current;
+  const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
+    open,
+    width: ACTION,
+    onOpen,
+    onClose,
+    onLock: () => {
+      back.lock();
+      onSwipe?.(true);
+    },
+    onUnlock: () => {
+      back.unlock();
+      onSwipe?.(false);
+    },
+    onTap: (x) => {
+      const width = rowWidth.current || 1;
+      const dateW = 62;
+      const fxW = 52;
+      const mid = Math.max((width - dateW - fxW) / 2, 1);
+      if (x < dateW) onDate();
+      else if (x < dateW + mid) amountRef.current?.focus();
+      else if (x < dateW + mid + mid) priceRef.current?.focus();
+      else fxRef.current?.focus();
+    },
+  });
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
-      <View style={styles.deleteLane}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon color="#ffffff" />
-        </Pressable>
-      </View>
       <Animated.View
-        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }, swipeStyle]}
         onLayout={(event) => {
           rowWidth.current = event.nativeEvent.layout.width;
         }}
@@ -294,8 +244,18 @@ function HistoryRow({
           onChange={(fx) => onUpdate({ fx })}
           style={[styles.fxCol, styles.colLine, { borderLeftColor: c.line }]}
         />
-        <View style={StyleSheet.absoluteFill} {...responder.panHandlers} />
+        <View
+          ref={nodeRef}
+          collapsable={false}
+          style={[StyleSheet.absoluteFill, swipeStyle]}
+          {...handlers}
+        />
       </Animated.View>
+      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon color="#ffffff" />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -488,6 +448,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
   deleteBtn: {
     width: ACTION,

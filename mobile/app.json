@@ -22,7 +22,14 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "NetworthApp",
+      "shortName": "Networth",
+      "themeColor": "#111111",
+      "backgroundColor": "#ffffff",
+      "display": "standalone"
     },
     "plugins": [
       [

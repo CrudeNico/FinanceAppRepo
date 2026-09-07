@@ -24,7 +24,8 @@ import {
   type RangeKey,
 } from "./assetData";
 import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
-import { useTheme } from "./theme";
+import { ChartAxis } from "./ChartAxis";
+import { useDragTrack } from "./useRevealSwipe";
 
 const BLUE = "#1D4ED8";
 const INK = "#111111";
@@ -97,7 +98,8 @@ export function HomeNetWorth({
       </View>
       <Text style={[styles.price, { color: c.ink }]}>
         <Text style={styles.euro}>€</Text>
-        {shown.toFixed(2)}
+        {shown.toFixed(2).slice(0, -3)}
+        <Text style={styles.euro}>{shown.toFixed(2).slice(-3)}</Text>
       </Text>
       {view === "graph" ? (
         <NetChart
@@ -303,25 +305,19 @@ function NetChart({
     onHover(prices[nearest] ?? null);
   }
 
+  const drag = useDragTrack(
+    (x) => pick(x),
+    (active) => {
+      onScrubbing(active);
+      if (!active) onHover(null);
+    },
+  );
+
   return (
     <View
       style={styles.chartWrap}
       onLayout={(event) => setBoxWidth(event.nativeEvent.layout.width)}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderGrant={(event) => {
-        onScrubbing(true);
-        pick(event.nativeEvent.locationX);
-      }}
-      onResponderMove={(event) => pick(event.nativeEvent.locationX)}
-      onResponderRelease={() => {
-        onScrubbing(false);
-        onHover(null);
-      }}
-      onResponderTerminate={() => {
-        onScrubbing(false);
-        onHover(null);
-      }}
+      {...drag}
     >
       <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
         <Defs>
@@ -330,18 +326,6 @@ function NetChart({
             <Stop offset="1" stopColor={BLUE} stopOpacity="0" />
           </LinearGradient>
         </Defs>
-        {ticks.map((tick) => (
-          <SvgText
-            key={tick}
-            x={width - 4}
-            y={yFor(tick) + 4}
-            fill={c.muted}
-            fontSize="10"
-            textAnchor="end"
-          >
-            {tick.toFixed(2)}
-          </SvgText>
-        ))}
         {area ? <Path d={area} fill="url(#homeFill)" /> : null}
         {line ? (
           <Path
@@ -377,6 +361,7 @@ function NetChart({
           </>
         ) : null}
       </Svg>
+      <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
     </View>
   );
 }
@@ -433,27 +418,17 @@ function NetPie({
     onHold(hit ? { name: hit.name, pct: hit.pct, value: hit.value } : null);
   }
 
+  const drag = useDragTrack(
+    (x, y) => pick(x, y),
+    (active) => {
+      onScrubbing?.(active);
+      if (!active) onHold(null);
+    },
+  );
+
   return (
     <View style={styles.pieWrap}>
-      <View
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={(event) => {
-          onScrubbing?.(true);
-          pick(event.nativeEvent.locationX, event.nativeEvent.locationY);
-        }}
-        onResponderMove={(event) => {
-          pick(event.nativeEvent.locationX, event.nativeEvent.locationY);
-        }}
-        onResponderRelease={() => {
-          onScrubbing?.(false);
-          onHold(null);
-        }}
-        onResponderTerminate={() => {
-          onScrubbing?.(false);
-          onHold(null);
-        }}
-      >
+      <View {...drag}>
         <Svg width={size} height={size}>
           {total === 0 ? (
             <Circle cx={cx} cy={cy} r={radius} stroke={c.muted} strokeWidth="1.5" fill="none" />
@@ -537,7 +512,7 @@ const styles = StyleSheet.create({
     lineHeight: 56,
   },
   euro: { fontSize: 34, fontWeight: "400" },
-  chartWrap: { marginTop: 10, marginRight: -8 },
+  chartWrap: { marginTop: 10, marginRight: -8, position: "relative" },
   controls: {
     flexDirection: "row",
     alignItems: "center",

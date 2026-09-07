@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { enterProfile, getLastTheme, getSession, initProfiles, logoutProfile } from "./src/profiles";
+import { getSetting, setSetting } from "./src/db";
 import { HomeScreen } from "./src/HomeScreen";
 import { StockScreen } from "./src/StockScreen";
 import { CashflowScreen } from "./src/CashflowScreen";
@@ -18,6 +19,18 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [loginDark, setLoginDark] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const block = (event: Event) => event.preventDefault();
+    document.addEventListener("gesturestart", block);
+    document.addEventListener("gesturechange", block);
+    return () => {
+      document.removeEventListener("gesturestart", block);
+      document.removeEventListener("gesturechange", block);
+    };
+  }, []);
 
   useEffect(() => {
     initProfiles()
@@ -42,7 +55,15 @@ export default function App() {
 
   async function enter(id: string) {
     const profile = await enterProfile(id);
-    if (profile) setProfileId(profile.id);
+    if (!profile) return;
+    const seen = await getSetting("setupDone");
+    if (!seen) {
+      await setSetting("setupDone", "1");
+      setOpenSettings(true);
+    } else {
+      setOpenSettings(false);
+    }
+    setProfileId(profile.id);
   }
 
   async function logout() {
@@ -69,16 +90,27 @@ export default function App() {
   return (
     <ThemeProvider key={profileId}>
       <SessionProvider logout={() => logout().catch(() => undefined)}>
-        <ThemedApp />
+        <ThemedApp openSettings={openSettings} />
       </SessionProvider>
     </ThemeProvider>
   );
 }
 
-function ThemedApp() {
+function ThemedApp({ openSettings }: { openSettings: boolean }) {
   const { dark } = useTheme();
+  const navigation = useNavigationContainerRef();
+
+  useEffect(() => {
+    if (!openSettings) return;
+    const timer = setTimeout(() => navigation.navigate("Settings" as never), 0);
+    return () => clearTimeout(timer);
+  }, [navigation, openSettings]);
+
   return (
-    <NavigationContainer theme={dark ? DarkTheme : DefaultTheme}>
+    <NavigationContainer
+      ref={navigation}
+      theme={dark ? DarkTheme : DefaultTheme}
+    >
       <StatusBar style={dark ? "light" : "dark"} />
       <Stack.Navigator
         initialRouteName="Home"

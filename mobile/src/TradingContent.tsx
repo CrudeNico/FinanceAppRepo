@@ -37,7 +37,9 @@ import {
 import { loadTradingDays, loadTradingMonths, saveTradingDays, saveTradingMonths } from "./db";
 import type { DayEntry, TradeRow } from "./models";
 import type { ListedStock } from "./stockList";
+import { ChartAxis } from "./ChartAxis";
 import { useTheme } from "./theme";
+import { useDragTrack } from "./useRevealSwipe";
 
 const BLUE = "#3B82F6";
 const GREEN = "#16A34A";
@@ -276,6 +278,7 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
         <TradingHistory
           entries={entries}
           onChange={persistMonths}
+          onSwipe={setScrubbing}
           onAdded={() => {
             revealAfterLayout.current = true;
           }}
@@ -377,25 +380,19 @@ function PriceChart({
     onHover(prices[nearest] ?? null);
   }
 
+  const drag = useDragTrack(
+    (x) => pick(x),
+    (active) => {
+      onScrubbing(active);
+      if (!active) onHover(null);
+    },
+  );
+
   return (
     <View
       style={styles.chartWrap}
       onLayout={(event) => setBoxWidth(event.nativeEvent.layout.width)}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderGrant={(event) => {
-        onScrubbing(true);
-        pick(event.nativeEvent.locationX);
-      }}
-      onResponderMove={(event) => pick(event.nativeEvent.locationX)}
-      onResponderRelease={() => {
-        onScrubbing(false);
-        onHover(null);
-      }}
-      onResponderTerminate={() => {
-        onScrubbing(false);
-        onHover(null);
-      }}
+      {...drag}
     >
       <Svg
         width="100%"
@@ -409,18 +406,6 @@ function PriceChart({
             <Stop offset="1" stopColor={BLUE} stopOpacity="0" />
           </LinearGradient>
         </Defs>
-        {ticks.map((tick) => (
-          <SvgText
-            key={tick}
-            x={width - 4}
-            y={yFor(tick) + 4}
-            fill={c.muted}
-            fontSize="10"
-            textAnchor="end"
-          >
-            {tick.toFixed(2)}
-          </SvgText>
-        ))}
         {area ? <Path d={area} fill="url(#fill)" /> : null}
         {line ? (
           <Path
@@ -464,6 +449,7 @@ function PriceChart({
           </>
         ) : null}
       </Svg>
+      <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
     </View>
   );
 }
@@ -527,7 +513,7 @@ function Pill({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#ffffff" },
+  screen: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 72, paddingBottom: 40 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   logo: {
@@ -548,7 +534,7 @@ const styles = StyleSheet.create({
   price: { color: INK, fontSize: 52, fontWeight: "400", marginTop: 18, letterSpacing: -1.4, lineHeight: 56 },
   euro: { fontSize: 34, fontWeight: "400" },
   change: { color: GREEN, fontSize: 16, marginTop: 0 },
-  chartWrap: { marginTop: 10, marginRight: -8 },
+  chartWrap: { marginTop: 10, marginRight: -8, position: "relative" },
   controls: {
     flexDirection: "row",
     alignItems: "center",

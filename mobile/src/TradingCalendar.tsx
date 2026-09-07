@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { modalCenter } from "./modalCenter";
 import { useTheme } from "./theme";
 
 const INK = "#111111";
@@ -194,10 +195,10 @@ export function TradingCalendar({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={[styles.modalBg, { backgroundColor: c.overlay }]}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
         >
-          <Pressable style={styles.modalFill} onPress={() => setPicked(null)}>
-            <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+          <Pressable style={modalCenter.bg} onPress={() => setPicked(null)}>
+            <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
               <Text style={[styles.sheetTitle, { color: c.ink }]}>Gain / Loss</Text>
               <View style={styles.fields}>
                 <View style={styles.field}>

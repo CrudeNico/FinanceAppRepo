@@ -1,5 +1,13 @@
-import * as SQLite from "expo-sqlite";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+} from "firebase/firestore";
 import { closeDb, getSetting, initDb, persistLogo, setSetting } from "./db";
+import { getFirestoreDb } from "./firebase";
 
 export type UserProfile = {
   id: string;
@@ -8,31 +16,10 @@ export type UserProfile = {
   file: string;
 };
 
-let meta: SQLite.SQLiteDatabase | null = null;
 let active: UserProfile | null = null;
 
-async function getMeta() {
-  if (meta) return meta;
-  const database = await SQLite.openDatabaseAsync("profiles.db");
-  await database.execAsync(`
-    CREATE TABLE IF NOT EXISTS profiles (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      avatar TEXT,
-      file TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS session (
-      key TEXT PRIMARY KEY NOT NULL,
-      value TEXT NOT NULL
-    );
-  `);
-  const cols = await database.getAllAsync<{ name: string }>("PRAGMA table_info(profiles)");
-  if (!cols.some((col) => col.name === "password")) {
-    await database.execAsync("ALTER TABLE profiles ADD COLUMN password TEXT NOT NULL DEFAULT ''");
-  }
-  meta = database;
-  return database;
+function metaRef() {
+  return doc(getFirestoreDb(), "app", "meta");
 }
 
 export function getActiveProfile() {
@@ -40,84 +27,48 @@ export function getActiveProfile() {
 }
 
 export async function initProfiles() {
-  const database = await getMeta();
-  const wiped = await getMetaValue("starterCleared");
-  if (!wiped) {
-    for (const profile of await listProfiles()) {
-      await database.runAsync("DELETE FROM profiles WHERE id = ?", profile.id);
-      await SQLite.deleteDatabaseAsync(profile.file).catch(() => undefined);
-    }
-    await SQLite.deleteDatabaseAsync("finance.db").catch(() => undefined);
-    await setSession(null);
-    await setMetaValue("starterCleared", "1");
-  }
-}
-
-async function getMetaValue(key: string) {
-  const database = await getMeta();
-  const row = await database.getFirstAsync<{ value: string }>(
-    "SELECT value FROM session WHERE key = ?",
-    key,
-  );
-  return row?.value ?? null;
-}
-
-async function setMetaValue(key: string, value: string) {
-  const database = await getMeta();
-  await database.runAsync(
-    "INSERT INTO session (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    key,
-    value,
-  );
+  await getFirestoreDb();
 }
 
 export async function getLastTheme() {
-  const value = await getMetaValue("lastTheme");
-  return value === "dark" ? "dark" : "light";
+  const snap = await getDoc(metaRef());
+  return snap.data()?.lastTheme === "dark" ? "dark" : "light";
 }
 
 export async function setLastTheme(mode: "light" | "dark") {
-  await setMetaValue("lastTheme", mode);
+  await setDoc(metaRef(), { lastTheme: mode }, { merge: true });
 }
 
 export async function listProfiles(): Promise<UserProfile[]> {
-  const database = await getMeta();
-  const rows = await database.getAllAsync<{
-    id: string;
-    name: string;
-    avatar: string | null;
-    file: string;
-  }>("SELECT id, name, avatar, file FROM profiles ORDER BY created_at ASC");
-  return rows;
+  const snap = await getDocs(collection(getFirestoreDb(), "profiles"));
+  return snap.docs
+    .map((item) => {
+      const data = item.data();
+      return {
+        id: item.id,
+        name: String(data.name ?? "Profile"),
+        avatar: data.avatar ? String(data.avatar) : null,
+        file: String(data.file ?? `finance-${item.id}.db`),
+      };
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function getSession() {
-  const database = await getMeta();
-  const row = await database.getFirstAsync<{ value: string }>(
-    "SELECT value FROM session WHERE key = ?",
-    "current",
-  );
-  return row?.value ?? null;
+  const snap = await getDoc(metaRef());
+  const value = snap.data()?.current;
+  return typeof value === "string" && value ? value : null;
 }
 
 async function setSession(id: string | null) {
-  const database = await getMeta();
-  if (!id) {
-    await database.runAsync("DELETE FROM session WHERE key = ?", "current");
-    return;
-  }
-  await database.runAsync(
-    "INSERT INTO session (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    "current",
-    id,
-  );
+  await setDoc(metaRef(), { current: id }, { merge: true });
 }
 
 export async function enterProfile(id: string) {
   const profiles = await listProfiles();
-  const profile = profiles.find((item) => item.id === id);
+  let profile = profiles.find((item) => item.id === id);
   if (!profile) return null;
-  await initDb(profile.file);
+  await initDb(id);
   const stored = await getSetting("avatar");
   if (stored && !profile.avatar) {
     await updateProfileAvatar(id, stored);
@@ -126,7 +77,7 @@ export async function enterProfile(id: string) {
     await setSetting("avatar", profile.avatar);
   }
   const theme = await getSetting("theme");
-  await setLastTheme(theme === "dark" ? "dark" : "light");
+  if (theme === "dark" || theme === "light") await setLastTheme(theme);
   await setSession(id);
   active = profile;
   return profile;
@@ -139,49 +90,49 @@ export async function logoutProfile() {
 }
 
 export async function addProfile(name: string, password: string) {
-  const database = await getMeta();
   const id = `p${Date.now()}`;
-  const file = `finance-${id}.db`;
-  await database.runAsync(
-    "INSERT INTO profiles (id, name, avatar, file, password, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    id,
-    name.trim() || "Profile",
-    null,
-    file,
+  await setDoc(doc(getFirestoreDb(), "profiles", id), {
+    name: name.trim() || "Profile",
+    avatar: null,
+    file: `finance-${id}.db`,
     password,
-    Date.now(),
-  );
+    created_at: Date.now(),
+  });
   return id;
 }
 
 export async function checkProfilePassword(id: string, password: string) {
-  const database = await getMeta();
-  const row = await database.getFirstAsync<{ password: string }>(
-    "SELECT password FROM profiles WHERE id = ?",
-    id,
-  );
-  return Boolean(row?.password) && row?.password === password;
+  const snap = await getDoc(doc(getFirestoreDb(), "profiles", id));
+  const stored = snap.data()?.password;
+  return Boolean(stored) && stored === password;
 }
 
 export async function deleteProfile(id: string, password: string) {
   if (!(await checkProfilePassword(id, password))) return false;
-  const database = await getMeta();
-  const row = await database.getFirstAsync<{ file: string }>(
-    "SELECT file FROM profiles WHERE id = ?",
-    id,
-  );
-  await database.runAsync("DELETE FROM profiles WHERE id = ?", id);
-  if (row?.file && row.file !== "finance.db") {
-    await SQLite.deleteDatabaseAsync(row.file).catch(() => undefined);
-  } else if (row?.file === "finance.db") {
-    await SQLite.deleteDatabaseAsync("finance.db").catch(() => undefined);
+  const db = getFirestoreDb();
+  const profileRef = doc(db, "profiles", id);
+  const collections = [
+    "cards",
+    "stock_history",
+    "trading_months",
+    "trading_days",
+    "cashflow_entries",
+    "cashflow_groups",
+    "cashflow_items",
+    "settings",
+  ];
+  for (const name of collections) {
+    const rows = await getDocs(collection(profileRef, name));
+    await Promise.all(rows.docs.map((item) => deleteDoc(item.ref)));
   }
+  await deleteDoc(profileRef);
+  const session = await getSession();
+  if (session === id) await setSession(null);
   return true;
 }
 
 export async function updateProfileAvatar(id: string, uri: string | null) {
-  const database = await getMeta();
-  await database.runAsync("UPDATE profiles SET avatar = ? WHERE id = ?", uri, id);
+  await setDoc(doc(getFirestoreDb(), "profiles", id), { avatar: uri }, { merge: true });
   if (active?.id === id) active = { ...active, avatar: uri };
 }
 

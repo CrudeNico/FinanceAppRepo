@@ -3,7 +3,6 @@ import {
   Animated,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -18,7 +17,8 @@ import { CategoryManager, CategoryPicker, TagIcon } from "./CashflowCategoryShee
 import { loadCategoryGroups, saveCategoryGroups } from "./db";
 import type { CashflowEntry } from "./models";
 import { useTheme } from "./theme";
-import { useLockBackGesture } from "./useLockBackGesture";
+import { modalCenter } from "./modalCenter";
+import { useRevealSwipe } from "./useRevealSwipe";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -61,11 +61,13 @@ export function CashflowHistory({
   onChange,
   onAdded,
   ready = true,
+  onSwipe,
 }: {
   entries: CashflowEntry[];
   onChange: (entries: CashflowEntry[]) => void;
   onAdded?: () => void;
   ready?: boolean;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
   const today = todayIso();
@@ -242,6 +244,7 @@ export function CashflowHistory({
                                   onDate={() => setCalendarFor(entry.id)}
                                   onAmount={(amount) => update(entry.id, { amount })}
                                   onItem={() => setItemFor(entry.id)}
+                                  onSwipe={onSwipe}
                                 />
                               ))}
                             </View>
@@ -258,10 +261,10 @@ export function CashflowHistory({
       <Modal visible={askStart} transparent animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={[styles.modalBg, { backgroundColor: c.overlay }]}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
         >
-          <View style={styles.modalFill}>
-            <View style={[styles.sheet, { backgroundColor: c.modal }]}>
+          <View>
+            <View style={[modalCenter.sheet, { backgroundColor: c.modal }]}>
               <Text style={[styles.sheetTitle, { color: c.ink }]}>What is your starting balance?</Text>
               <Text style={[styles.fieldLabel, { color: c.muted }]}>Amount</Text>
               <TextInput
@@ -287,8 +290,8 @@ export function CashflowHistory({
         animationType="fade"
         onRequestClose={() => setCalendarFor(null)}
       >
-        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
-          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <Pressable style={[modalCenter.bg, { backgroundColor: c.overlay }]} onPress={() => setCalendarFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             {calendarEntry ? (
               <MiniCalendar
                 value={calendarEntry.date}
@@ -342,6 +345,7 @@ function FlowRow({
   onDate,
   onAmount,
   onItem,
+  onSwipe,
 }: {
   entry: CashflowEntry;
   last: boolean;
@@ -353,80 +357,38 @@ function FlowRow({
   onDate: () => void;
   onAmount: (amount: string) => void;
   onItem: () => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
-  const pan = useRef(new Animated.Value(0)).current;
-  const offset = useRef(0);
   const back = useLockBackGesture();
-  const openRef = useRef(onOpen);
-  const closeRef = useRef(onClose);
-  openRef.current = onOpen;
-  closeRef.current = onClose;
-
-  function snap(shouldOpen: boolean) {
-    const toValue = shouldOpen ? ACTION : 0;
-    offset.current = toValue;
-    Animated.timing(pan, {
-      toValue,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    if (shouldOpen) openRef.current();
-    else closeRef.current();
-  }
-
-  useEffect(() => {
-    if (!open) {
-      offset.current = 0;
-      pan.setValue(0);
-    }
-  }, [open, pan]);
-
-  const responder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        !locked &&
-        Math.abs(gesture.dx) > 8 &&
-        Math.abs(gesture.dx) > Math.abs(gesture.dy),
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        back.lock();
-        pan.stopAnimation((value) => {
-          offset.current = value;
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        back.unlock();
-        if (gesture.dx < -4 || gesture.vx < -0.05) {
-          snap(false);
-          return;
-        }
-        if (gesture.dx > 6 || gesture.vx > 0.08) snap(true);
-        else snap(false);
-      },
-      onPanResponderTerminate: () => {
-        back.unlock();
-      },
-    }),
-  ).current;
+  const amountRef = useRef<TextInput>(null);
+  const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
+    open,
+    enabled: !locked,
+    width: ACTION,
+    onOpen,
+    onClose,
+    onLock: () => {
+      back.lock();
+      onSwipe?.(true);
+    },
+    onUnlock: () => {
+      back.unlock();
+      onSwipe?.(false);
+    },
+    onTap: (x) => {
+      if (x < 62) onDate();
+      else if (x < 220) onItem();
+      else amountRef.current?.focus();
+    },
+  });
 
   const empty = (entry.amount ?? "").trim() === "";
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
-      {locked ? null : (
-      <View style={styles.deleteLane}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon />
-        </Pressable>
-      </View>
-      )}
       <Animated.View
-        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
-        {...(locked ? {} : responder.panHandlers)}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }, swipeStyle]}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
           <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
@@ -440,6 +402,7 @@ function FlowRow({
           </Text>
         </Pressable>
         <TextInput
+          ref={amountRef}
           value={entry.amount}
           onChangeText={onAmount}
           placeholder="—"
@@ -455,7 +418,22 @@ function FlowRow({
             !empty && entry.kind === "income" && styles.amtIncome,
           ]}
         />
+        {locked ? null : (
+          <View
+            ref={nodeRef}
+            collapsable={false}
+            style={[StyleSheet.absoluteFill, swipeStyle]}
+            {...handlers}
+          />
+        )}
       </Animated.View>
+      {locked ? null : (
+      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon />
+        </Pressable>
+      </View>
+      )}
     </View>
   );
 }
@@ -628,6 +606,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
   deleteBtn: {
     width: ACTION,

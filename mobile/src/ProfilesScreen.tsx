@@ -51,9 +51,13 @@ export function ProfilesScreen({
   async function confirmAdd() {
     const next = name.trim();
     if (!next || !password) return;
-    await addProfile(next, password);
-    closeSheets();
-    reload();
+    try {
+      await addProfile(next, password);
+      closeSheets();
+      reload();
+    } catch {
+      setError("Could not add profile");
+    }
   }
 
   async function confirmDelete() {
@@ -133,12 +137,16 @@ export function ProfilesScreen({
             />
             <TextInput
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(value) => {
+                setPassword(value);
+                setError("");
+              }}
               placeholder="Password"
               placeholderTextColor={c.muted}
               secureTextEntry
               style={[styles.input, styles.inputGap, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable onPress={confirmAdd} style={[styles.addBtn, { backgroundColor: c.ink }]}>
               <Text style={[styles.addBtnText, { color: c.bg }]}>Add</Text>
             </Pressable>

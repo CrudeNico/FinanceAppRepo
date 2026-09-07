@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
-  Alert,
   Animated,
   Image,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { confirmAction } from "./confirmAction";
+import { useRevealSwipe } from "./useRevealSwipe";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
 import { cashflowStats, stockStats, tradingStats } from "./assetData";
@@ -88,6 +88,7 @@ export function HomeScreen({
       key="trading"
       title="Trading"
       kind="trading"
+      onSwipe={setLockScroll}
       onOpenItem={(stock) =>
         navigation.navigate("Trading", {
           stock: {
@@ -108,6 +109,7 @@ export function HomeScreen({
       key="stock"
       title="Stocks"
       kind="stock"
+      onSwipe={setLockScroll}
       onOpenItem={(stock) =>
         navigation.navigate("Stock", {
           stock: {
@@ -170,11 +172,13 @@ function CardSection({
   kind,
   locked,
   onOpenItem,
+  onSwipe,
 }: {
   title: string;
   kind: CardKind;
   locked?: boolean;
   onOpenItem: (stock: ListedStock) => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const [items, setItems] = useState<ListedStock[]>([]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
@@ -226,18 +230,11 @@ function CardSection({
   }
 
   function askRemove(item: ListedStock) {
-    Alert.alert("Delete", `Remove ${item.ticker || "this card"}?`, [
-      { text: "Cancel", style: "cancel", onPress: () => setOpenSwipe(null) },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          if (item.saved) deleteCard(item.id);
-          setItems((current) => current.filter((entry) => entry.id !== item.id));
-          setOpenSwipe(null);
-        },
-      },
-    ]);
+    confirmAction("Delete", `Remove ${item.ticker || "this card"}?`, () => {
+      if (item.saved) deleteCard(item.id);
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      setOpenSwipe(null);
+    });
   }
 
   async function pickImage(id: string) {
@@ -285,6 +282,7 @@ function CardSection({
             if (!item.saved) return;
             onOpenItem(item);
           }}
+          onSwipe={onSwipe}
         />
       ))}
     </View>
@@ -302,6 +300,7 @@ function StockCard({
   onChange,
   onConfirm,
   onOpenStock,
+  onSwipe,
 }: {
   stock: ListedStock;
   locked?: boolean;
@@ -313,72 +312,23 @@ function StockCard({
   onChange: (patch: Partial<ListedStock>) => void;
   onConfirm: () => void;
   onOpenStock: () => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
-  const pan = useRef(new Animated.Value(0)).current;
-  const offset = useRef(0);
-  const openRef = useRef(onOpen);
-  const closeRef = useRef(onClose);
-  openRef.current = onOpen;
-  closeRef.current = onClose;
-
-  function snap(shouldOpen: boolean) {
-    pan.stopAnimation();
-    if (shouldOpen) {
-      offset.current = ACTION;
-      Animated.timing(pan, {
-        toValue: ACTION,
-        duration: 120,
-        useNativeDriver: true,
-      }).start();
-      openRef.current();
-      return;
-    }
-    offset.current = 0;
-    Animated.timing(pan, {
-      toValue: 0,
-      duration: 80,
-      useNativeDriver: true,
-    }).start(() => {
-      pan.setValue(0);
-    });
-    closeRef.current();
-  }
-
-  useEffect(() => {
-    if (!open) {
-      offset.current = 0;
-      pan.setValue(0);
-    }
-  }, [open, pan]);
-
-  const responder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-      onPanResponderGrant: () => {
-        pan.stopAnimation((value) => {
-          offset.current = value;
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        if (offset.current < ACTION && gesture.dx > 8) {
-          snap(true);
-          return;
-        }
-        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        const goingLeft = gesture.dx < -4 || gesture.vx < -0.05;
-        if (goingLeft) {
-          snap(false);
-          return;
-        }
-        if (gesture.dx > 4 || gesture.vx > 0.04) snap(true);
-        else snap(false);
-      },
-    }),
-  ).current;
+  const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
+    open,
+    enabled: !locked,
+    width: ACTION,
+    onOpen,
+    onClose,
+    onLock: () => onSwipe?.(true),
+    onUnlock: () => onSwipe?.(false),
+    onTap: (x) => {
+      if (open) onClose();
+      else if (x < 50) onPickImage();
+      else if (stock.saved) onOpenStock();
+    },
+  });
 
   const letter = stock.letter ?? (stock.ticker.trim()[0] || "+");
   const saved = Boolean(stock.saved);
@@ -386,16 +336,11 @@ function StockCard({
   return (
     <View>
     <View style={styles.rowWrap}>
-      {locked ? null : (
-        <View style={styles.deleteLane}>
-          <Pressable onPress={onDelete} style={styles.deleteBtn}>
-            <TrashIcon />
-          </Pressable>
-        </View>
-      )}
       <Animated.View
-        style={[styles.card, { backgroundColor: c.cardSoft, transform: [{ translateX: locked ? 0 : pan }] }]}
-        {...(locked ? {} : responder.panHandlers)}
+        ref={!locked && !saved ? nodeRef : undefined}
+        collapsable={false}
+        style={[styles.card, { backgroundColor: c.cardSoft, transform: [{ translateX: locked ? 0 : pan }] }, swipeStyle]}
+        {...(!locked && !saved ? handlers : {})}
       >
         <Pressable onPress={onPickImage} style={styles.logo}>
           {stock.image ? (
@@ -443,7 +388,22 @@ function StockCard({
             />
           </View>
         )}
+        {locked || !saved ? null : (
+          <View
+            ref={nodeRef}
+            collapsable={false}
+            style={[StyleSheet.absoluteFill, swipeStyle]}
+            {...handlers}
+          />
+        )}
       </Animated.View>
+      {locked ? null : (
+        <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+          <Pressable onPress={onDelete} style={styles.deleteBtn}>
+            <TrashIcon />
+          </Pressable>
+        </View>
+      )}
     </View>
     {!saved ? (
       <Pressable onPress={onConfirm} style={[styles.rowWrap, styles.card, styles.confirmCard, { backgroundColor: c.cardSoft }]}>
@@ -469,7 +429,7 @@ function TrashIcon() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#E6E6E6" },
+  screen: { flex: 1 },
   content: {
     flexGrow: 1,
     paddingHorizontal: 20,
@@ -500,6 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "flex-start",
     justifyContent: "center",
+    zIndex: 2,
   },
   deleteBtn: {
     width: ACTION,

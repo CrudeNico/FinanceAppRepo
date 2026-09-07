@@ -1,4 +1,5 @@
 import { Image, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { ScreenBack } from "./ScreenBack";
 import * as ImagePicker from "expo-image-picker";
 import { persistLogo } from "./db";
 import { getActiveProfile } from "./profiles";
@@ -29,9 +30,7 @@ export function SettingsScreen({
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
-      <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.back}>
-        <Text style={[styles.backText, { color: c.ink }]}>‹</Text>
-      </Pressable>
+      <ScreenBack />
       <Text style={[styles.title, { color: c.ink }]}>Settings</Text>
 
       <Pressable onPress={pickImage} style={styles.photoWrap}>
@@ -43,7 +42,10 @@ export function SettingsScreen({
         <Text style={[styles.photoHint, { color: c.muted }]}>Tap to add a photo</Text>
       </Pressable>
 
-      <View style={[styles.row, { backgroundColor: c.cardSoft }]}>
+      <Pressable
+        onPress={() => setMode(dark ? "light" : "dark")}
+        style={[styles.row, { backgroundColor: c.cardSoft }]}
+      >
         <Text style={[styles.rowLabel, { color: c.ink }]}>Dark mode</Text>
         <Switch
           value={dark}
@@ -51,7 +53,7 @@ export function SettingsScreen({
           trackColor={{ false: c.line, true: "#86EFAC" }}
           thumbColor="#ffffff"
         />
-      </View>
+      </Pressable>
 
       <Pressable onPress={logout} style={[styles.row, { backgroundColor: c.cardSoft, marginTop: 10 }]}>
         <Text style={[styles.rowLabel, { color: c.ink }]}>Log out</Text>

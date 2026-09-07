@@ -1,15 +1,24 @@
 import { Directory, File, Paths } from "expo-file-system";
-import * as SQLite from "expo-sqlite";
-import { INITIAL_HISTORY, type HistoryEntry } from "./assetData";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
+import { INITIAL_HISTORY } from "./assetData";
 import { DEFAULT_CATEGORY_GROUPS, type CategoryGroup } from "./cashflowCategories";
+import { getFirestoreDb } from "./firebase";
 import type { CashflowEntry, DayEntry, TradeRow } from "./models";
 import { INITIAL_STOCKS, type ListedStock } from "./stockList";
 
 export type CardKind = "stock" | "trading" | "cashflow";
 
-let db: SQLite.SQLiteDatabase | null = null;
-let opening: Promise<SQLite.SQLiteDatabase> | null = null;
-let activeFile = "finance.db";
+let activeId: string | null = null;
 let categoryLock: Promise<void> = Promise.resolve();
 
 function withCategoryLock<T>(fn: () => Promise<T>) {
@@ -21,214 +30,97 @@ function withCategoryLock<T>(fn: () => Promise<T>) {
   return run;
 }
 
-const CASHFLOW_TABLE = `
-    CREATE TABLE IF NOT EXISTS cashflow_entries (
-      id TEXT PRIMARY KEY NOT NULL,
-      card_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      amount TEXT NOT NULL,
-      label TEXT NOT NULL,
-      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS cashflow_groups (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      icon TEXT NOT NULL DEFAULT 'other',
-      color TEXT NOT NULL DEFAULT '#6B7280',
-      saved INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS cashflow_items (
-      id TEXT PRIMARY KEY NOT NULL,
-      group_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      sort_order INTEGER NOT NULL,
-      FOREIGN KEY (group_id) REFERENCES cashflow_groups(id) ON DELETE CASCADE
-    );
-`;
+function db() {
+  return getFirestoreDb();
+}
+
+function profileRef() {
+  if (!activeId) throw new Error("No profile");
+  return doc(db(), "profiles", activeId);
+}
+
+function col(name: string) {
+  return collection(profileRef(), name);
+}
+
+function item(name: string, id: string) {
+  return doc(col(name), id);
+}
+
+async function replaceWhere(name: string, field: string, value: string, rows: Record<string, unknown>[]) {
+  const snap = await getDocs(query(col(name), where(field, "==", value)));
+  const existing = snap.docs;
+  const chunk = 400;
+  for (let i = 0; i < existing.length; i += chunk) {
+    const batch = writeBatch(db());
+    existing.slice(i, i + chunk).forEach((row) => batch.delete(row.ref));
+    await batch.commit();
+  }
+  for (let i = 0; i < rows.length; i += chunk) {
+    const batch = writeBatch(db());
+    rows.slice(i, i + chunk).forEach((row) => {
+      const id = String(row.id);
+      batch.set(item(name, id), row);
+    });
+    await batch.commit();
+  }
+}
 
 export async function closeDb() {
-  if (opening) await opening.catch(() => undefined);
-  if (db) {
-    await db.closeAsync().catch(() => undefined);
-    db = null;
-  }
-  opening = null;
+  activeId = null;
 }
 
 export async function initDb(file = "finance.db") {
-  if (db && activeFile === file) {
-    await db.execAsync(CASHFLOW_TABLE);
-    await seedCategories(db);
-    return db;
-  }
-  if (db) await closeDb();
-  if (opening) return opening;
-  opening = (async () => {
-    activeFile = file;
-    const database = await SQLite.openDatabaseAsync(file);
-    await database.execAsync(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    CREATE TABLE IF NOT EXISTS cards (
-      id TEXT PRIMARY KEY NOT NULL,
-      kind TEXT NOT NULL,
-      ticker TEXT NOT NULL,
-      name TEXT NOT NULL,
-      image TEXT,
-      letter TEXT,
-      color TEXT,
-      created_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS stock_history (
-      id TEXT PRIMARY KEY NOT NULL,
-      card_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      amount TEXT NOT NULL,
-      price TEXT NOT NULL,
-      fx TEXT NOT NULL,
-      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS trading_months (
-      id TEXT PRIMARY KEY NOT NULL,
-      card_id TEXT NOT NULL,
-      month TEXT NOT NULL,
-      gain TEXT NOT NULL,
-      loss TEXT NOT NULL,
-      deposit TEXT NOT NULL,
-      withdrawal TEXT NOT NULL,
-      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS trading_days (
-      card_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      gain TEXT NOT NULL,
-      loss TEXT NOT NULL,
-      PRIMARY KEY (card_id, date),
-      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS cashflow_entries (
-      id TEXT PRIMARY KEY NOT NULL,
-      card_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      amount TEXT NOT NULL,
-      label TEXT NOT NULL,
-      FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS cashflow_groups (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      kind TEXT NOT NULL,
-      icon TEXT NOT NULL DEFAULT 'other',
-      color TEXT NOT NULL DEFAULT '#6B7280',
-      saved INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS cashflow_items (
-      id TEXT PRIMARY KEY NOT NULL,
-      group_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      sort_order INTEGER NOT NULL,
-      FOREIGN KEY (group_id) REFERENCES cashflow_groups(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY NOT NULL,
-      value TEXT NOT NULL
-    );
-  `);
-    db = database;
-    await seedIfNeeded(database, file === "finance.db");
-    await seedCategories(database);
-    return database;
-  })();
-  try {
-    return await opening;
-  } finally {
-    opening = null;
-  }
+  activeId = file.startsWith("finance-") ? file.slice("finance-".length).replace(/\.db$/, "") : file;
+  await seedIfNeeded(file === "finance.db");
+  await seedCategories();
 }
 
-async function getDb() {
-  return db ?? (await initDb());
-}
-
-async function migrateCategoryColumns(database: SQLite.SQLiteDatabase) {
-  const cols = await database.getAllAsync<{ name: string }>("PRAGMA table_info(cashflow_groups)");
-  const names = new Set(cols.map((col) => col.name));
-  if (!names.has("icon")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN icon TEXT");
-  if (!names.has("color")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN color TEXT");
-  if (!names.has("saved")) await database.execAsync("ALTER TABLE cashflow_groups ADD COLUMN saved INTEGER");
-  for (const group of DEFAULT_CATEGORY_GROUPS) {
-    await database.runAsync(
-      "UPDATE cashflow_groups SET icon = COALESCE(NULLIF(icon, ''), ?), color = COALESCE(NULLIF(color, ''), ?), saved = COALESCE(saved, 1) WHERE id = ?",
-      group.icon,
-      group.color,
-      group.id,
-    );
-  }
-  await database.runAsync(
-    "UPDATE cashflow_groups SET icon = COALESCE(NULLIF(icon, ''), 'other'), color = COALESCE(NULLIF(color, ''), '#6B7280'), saved = COALESCE(saved, 1)",
-  );
-}
-
-async function seedCategories(database: SQLite.SQLiteDatabase) {
+async function seedCategories() {
   await withCategoryLock(async () => {
-  await migrateCategoryColumns(database);
-  const row = await database.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM cashflow_groups",
-  );
-  if ((row?.count ?? 0) > 0) {
-    const items = await database.getFirstAsync<{ count: number }>(
-      "SELECT COUNT(*) as count FROM cashflow_items",
-    );
-    if ((items?.count ?? 0) === 0) {
-      for (const group of DEFAULT_CATEGORY_GROUPS) {
-        for (const [itemIndex, item] of group.items.entries()) {
-          await database.runAsync(
-            "INSERT OR IGNORE INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
-            item.id,
-            group.id,
-            item.name,
-            itemIndex,
-          );
+    const groups = await getDocs(col("cashflow_groups"));
+    if (groups.size > 0) {
+      const items = await getDocs(col("cashflow_items"));
+      if (items.size === 0) {
+        for (const group of DEFAULT_CATEGORY_GROUPS) {
+          for (const [itemIndex, itemRow] of group.items.entries()) {
+            await setDoc(item("cashflow_items", itemRow.id), {
+              id: itemRow.id,
+              group_id: group.id,
+              name: itemRow.name,
+              sort_order: itemIndex,
+            });
+          }
         }
       }
+      return;
     }
-    return;
-  }
-  for (const [groupIndex, group] of DEFAULT_CATEGORY_GROUPS.entries()) {
-    await database.runAsync(
-      "INSERT INTO cashflow_groups (id, name, kind, icon, color, saved, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      group.id,
-      group.name,
-      group.kind,
-      group.icon,
-      group.color,
-      1,
-      groupIndex,
-    );
-    for (const [itemIndex, item] of group.items.entries()) {
-      await database.runAsync(
-        "INSERT INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
-        item.id,
-        group.id,
-        item.name,
-        itemIndex,
-      );
+    for (const [groupIndex, group] of DEFAULT_CATEGORY_GROUPS.entries()) {
+      await setDoc(item("cashflow_groups", group.id), {
+        id: group.id,
+        name: group.name,
+        kind: group.kind,
+        icon: group.icon,
+        color: group.color,
+        saved: 1,
+        sort_order: groupIndex,
+      });
+      for (const [itemIndex, itemRow] of group.items.entries()) {
+        await setDoc(item("cashflow_items", itemRow.id), {
+          id: itemRow.id,
+          group_id: group.id,
+          name: itemRow.name,
+          sort_order: itemIndex,
+        });
+      }
     }
-  }
   });
 }
 
-async function seedIfNeeded(database: SQLite.SQLiteDatabase, seedDemoStock: boolean) {
+async function seedIfNeeded(seedDemoStock: boolean) {
   if (seedDemoStock) {
-    const row = await database.getFirstAsync<{ count: number }>(
-      "SELECT COUNT(*) as count FROM cards WHERE kind = 'stock'",
-    );
-    if ((row?.count ?? 0) === 0) {
+    const stocks = await getDocs(query(col("cards"), where("kind", "==", "stock")));
+    if (stocks.size === 0) {
       const stock = INITIAL_STOCKS[0];
       if (stock) {
         await upsertCard("stock", { ...stock, saved: true });
@@ -236,10 +128,8 @@ async function seedIfNeeded(database: SQLite.SQLiteDatabase, seedDemoStock: bool
       }
     }
   }
-  const cash = await database.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM cards WHERE kind = 'cashflow'",
-  );
-  if ((cash?.count ?? 0) > 0) return;
+  const cash = await getDocs(query(col("cards"), where("kind", "==", "cashflow")));
+  if (cash.size > 0) return;
   await upsertCard("cashflow", {
     id: "cashflow",
     ticker: "CASH",
@@ -252,250 +142,212 @@ async function seedIfNeeded(database: SQLite.SQLiteDatabase, seedDemoStock: bool
 }
 
 export async function listCards(kind: CardKind): Promise<ListedStock[]> {
-  const database = await getDb();
-  const rows = await database.getAllAsync<{
-    id: string;
-    ticker: string;
-    name: string;
-    image: string | null;
-    letter: string | null;
-    color: string | null;
-  }>("SELECT id, ticker, name, image, letter, color FROM cards WHERE kind = ? ORDER BY created_at ASC", kind);
-  return rows.map((row) => ({
-    id: row.id,
-    ticker: row.ticker,
-    name: row.name,
-    image: row.image,
-    letter: row.letter ?? undefined,
-    color: row.color ?? undefined,
-    saved: true,
-  }));
+  const snap = await getDocs(query(col("cards"), where("kind", "==", kind)));
+  return snap.docs
+    .map((row) => {
+      const data = row.data();
+      return {
+        id: row.id,
+        ticker: String(data.ticker ?? ""),
+        name: String(data.name ?? ""),
+        image: data.image ? String(data.image) : null,
+        letter: data.letter ? String(data.letter) : undefined,
+        color: data.color ? String(data.color) : undefined,
+        saved: true,
+        created_at: Number(data.created_at ?? 0),
+      };
+    })
+    .sort((a, b) => a.created_at - b.created_at)
+    .map(({ created_at: _created, ...card }) => card);
 }
 
 export async function upsertCard(kind: CardKind, card: ListedStock) {
-  const database = await getDb();
-  await database.runAsync(
-    `INSERT INTO cards (id, kind, ticker, name, image, letter, color, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       ticker = excluded.ticker,
-       name = excluded.name,
-       image = excluded.image,
-       letter = excluded.letter,
-       color = excluded.color`,
-    card.id,
+  const current = await getDoc(item("cards", card.id));
+  await setDoc(item("cards", card.id), {
+    id: card.id,
     kind,
-    card.ticker,
-    card.name,
-    card.image ?? null,
-    card.letter ?? null,
-    card.color ?? null,
-    Date.now(),
-  );
+    ticker: card.ticker,
+    name: card.name,
+    image: card.image ?? null,
+    letter: card.letter ?? null,
+    color: card.color ?? null,
+    created_at: current.data()?.created_at ?? Date.now(),
+  });
 }
 
 export async function deleteCard(id: string) {
-  const database = await getDb();
-  await database.runAsync("DELETE FROM cards WHERE id = ?", id);
+  await deleteDoc(item("cards", id));
 }
 
-export async function loadStockHistory(cardId: string): Promise<HistoryEntry[]> {
-  const database = await getDb();
-  return database.getAllAsync<HistoryEntry>(
-    "SELECT id, date, amount, price, fx FROM stock_history WHERE card_id = ? ORDER BY date DESC",
+export async function loadStockHistory(cardId: string) {
+  const snap = await getDocs(query(col("stock_history"), where("card_id", "==", cardId)));
+  return snap.docs
+    .map((row) => {
+      const data = row.data();
+      return {
+        id: row.id,
+        date: String(data.date ?? ""),
+        amount: String(data.amount ?? ""),
+        price: String(data.price ?? ""),
+        fx: String(data.fx ?? ""),
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function saveStockHistory(
+  cardId: string,
+  entries: { id: string; date: string; amount: string; price: string; fx: string }[],
+) {
+  await replaceWhere(
+    "stock_history",
+    "card_id",
     cardId,
+    entries.map((entry) => ({ ...entry, card_id: cardId })),
   );
-}
-
-export async function saveStockHistory(cardId: string, entries: HistoryEntry[]) {
-  const database = await getDb();
-  await database.withTransactionAsync(async () => {
-    await database.runAsync("DELETE FROM stock_history WHERE card_id = ?", cardId);
-    for (const entry of entries) {
-      await database.runAsync(
-        "INSERT INTO stock_history (id, card_id, date, amount, price, fx) VALUES (?, ?, ?, ?, ?, ?)",
-        entry.id,
-        cardId,
-        entry.date,
-        entry.amount,
-        entry.price,
-        entry.fx,
-      );
-    }
-  });
 }
 
 export async function loadTradingMonths(cardId: string): Promise<TradeRow[]> {
-  const database = await getDb();
-  return database.getAllAsync<TradeRow>(
-    "SELECT id, month, gain, loss, deposit, withdrawal FROM trading_months WHERE card_id = ? ORDER BY month DESC",
-    cardId,
-  );
+  const snap = await getDocs(query(col("trading_months"), where("card_id", "==", cardId)));
+  return snap.docs
+    .map((row) => {
+      const data = row.data();
+      return {
+        id: row.id,
+        month: String(data.month ?? ""),
+        gain: String(data.gain ?? ""),
+        loss: String(data.loss ?? ""),
+        deposit: String(data.deposit ?? ""),
+        withdrawal: String(data.withdrawal ?? ""),
+      };
+    })
+    .sort((a, b) => b.month.localeCompare(a.month));
 }
 
 export async function saveTradingMonths(cardId: string, entries: TradeRow[]) {
-  const database = await getDb();
-  await database.withTransactionAsync(async () => {
-    await database.runAsync("DELETE FROM trading_months WHERE card_id = ?", cardId);
-    for (const entry of entries) {
-      await database.runAsync(
-        "INSERT INTO trading_months (id, card_id, month, gain, loss, deposit, withdrawal) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        entry.id,
-        cardId,
-        entry.month,
-        entry.gain,
-        entry.loss,
-        entry.deposit,
-        entry.withdrawal,
-      );
-    }
-  });
+  await replaceWhere(
+    "trading_months",
+    "card_id",
+    cardId,
+    entries.map((entry) => ({ ...entry, card_id: cardId })),
+  );
 }
 
 export async function loadTradingDays(cardId: string): Promise<Record<string, DayEntry>> {
-  const database = await getDb();
-  const rows = await database.getAllAsync<{ date: string; gain: string; loss: string }>(
-    "SELECT date, gain, loss FROM trading_days WHERE card_id = ?",
-    cardId,
-  );
+  const snap = await getDocs(query(col("trading_days"), where("card_id", "==", cardId)));
   const map: Record<string, DayEntry> = {};
-  rows.forEach((row) => {
-    map[row.date] = { gain: row.gain, loss: row.loss };
+  snap.docs.forEach((row) => {
+    const data = row.data();
+    map[String(data.date)] = { gain: String(data.gain ?? ""), loss: String(data.loss ?? "") };
   });
   return map;
 }
 
 export async function saveTradingDays(cardId: string, days: Record<string, DayEntry>) {
-  const database = await getDb();
-  await database.withTransactionAsync(async () => {
-    await database.runAsync("DELETE FROM trading_days WHERE card_id = ?", cardId);
-    for (const [date, entry] of Object.entries(days)) {
-      await database.runAsync(
-        "INSERT INTO trading_days (card_id, date, gain, loss) VALUES (?, ?, ?, ?)",
-        cardId,
-        date,
-        entry.gain,
-        entry.loss,
-      );
-    }
-  });
+  const rows = Object.entries(days).map(([date, entry]) => ({
+    id: `${cardId}_${date}`,
+    card_id: cardId,
+    date,
+    gain: entry.gain,
+    loss: entry.loss,
+  }));
+  await replaceWhere("trading_days", "card_id", cardId, rows);
 }
 
 export async function loadCashflowEntries(cardId: string): Promise<CashflowEntry[]> {
-  const database = await getDb();
-  return database.getAllAsync<CashflowEntry>(
-    "SELECT id, date, kind, amount, label FROM cashflow_entries WHERE card_id = ? ORDER BY date DESC",
-    cardId,
-  );
+  const snap = await getDocs(query(col("cashflow_entries"), where("card_id", "==", cardId)));
+  return snap.docs
+    .map((row) => {
+      const data = row.data();
+      return {
+        id: row.id,
+        date: String(data.date ?? ""),
+        kind: (data.kind === "income" ? "income" : "expense") as CashflowEntry["kind"],
+        amount: String(data.amount ?? ""),
+        label: String(data.label ?? ""),
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function loadCategoryGroups(): Promise<CategoryGroup[]> {
-  const database = await getDb();
-  await withCategoryLock(() => migrateCategoryColumns(database));
-  const groups = await database.getAllAsync<{
-    id: string;
-    name: string;
-    kind: "income" | "expense";
-    icon: string | null;
-    color: string | null;
-    saved: number | null;
-    sort_order: number;
-  }>("SELECT id, name, kind, icon, color, saved, sort_order FROM cashflow_groups ORDER BY sort_order ASC");
-  const items = await database.getAllAsync<{
-    id: string;
-    group_id: string;
-    name: string;
-    sort_order: number;
-  }>("SELECT id, group_id, name, sort_order FROM cashflow_items ORDER BY sort_order ASC");
+  const groups = await getDocs(col("cashflow_groups"));
+  const items = await getDocs(col("cashflow_items"));
   const defaults = new Map(DEFAULT_CATEGORY_GROUPS.map((group) => [group.id, group]));
-  return groups.map((group) => {
-    const preset = defaults.get(group.id);
-    return {
-      id: group.id,
-      name: group.name,
-      kind: group.kind,
-      icon: group.icon || preset?.icon || "other",
-      color: group.color || preset?.color || "#6B7280",
-      saved: (group.saved ?? 1) === 1,
-      items: items
-        .filter((item) => item.group_id === group.id)
-        .map((item) => ({ id: item.id, name: item.name })),
-    };
-  });
+  return groups.docs
+    .map((row) => {
+      const data = row.data();
+      const preset = defaults.get(row.id);
+      return {
+        id: row.id,
+        name: String(data.name ?? ""),
+        kind: (data.kind === "income" ? "income" : "expense") as CategoryGroup["kind"],
+        icon: String(data.icon || preset?.icon || "other"),
+        color: String(data.color || preset?.color || "#6B7280"),
+        saved: Number(data.saved ?? 1) === 1,
+        sort_order: Number(data.sort_order ?? 0),
+        items: items.docs
+          .filter((itemRow) => itemRow.data().group_id === row.id)
+          .sort((a, b) => Number(a.data().sort_order ?? 0) - Number(b.data().sort_order ?? 0))
+          .map((itemRow) => ({ id: itemRow.id, name: String(itemRow.data().name ?? "") })),
+      };
+    })
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(({ sort_order: _sort, ...group }) => group);
 }
 
 export async function saveCategoryGroups(groups: CategoryGroup[]) {
-  const database = await getDb();
   await withCategoryLock(async () => {
-  await migrateCategoryColumns(database);
-  await database.withTransactionAsync(async () => {
-    await database.runAsync("DELETE FROM cashflow_items");
-    await database.runAsync("DELETE FROM cashflow_groups");
+    const existingGroups = await getDocs(col("cashflow_groups"));
+    const existingItems = await getDocs(col("cashflow_items"));
+    await Promise.all(existingGroups.docs.map((row) => deleteDoc(row.ref)));
+    await Promise.all(existingItems.docs.map((row) => deleteDoc(row.ref)));
     for (const [groupIndex, group] of groups.entries()) {
-      await database.runAsync(
-        "INSERT INTO cashflow_groups (id, name, kind, icon, color, saved, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        group.id,
-        group.name ?? "",
-        group.kind ?? "expense",
-        group.icon ?? "other",
-        group.color ?? "#6B7280",
-        group.saved === false ? 0 : 1,
-        groupIndex,
-      );
-      for (const [itemIndex, item] of (group.items ?? []).entries()) {
-        await database.runAsync(
-          "INSERT INTO cashflow_items (id, group_id, name, sort_order) VALUES (?, ?, ?, ?)",
-          item.id,
-          group.id,
-          item.name ?? "",
-          itemIndex,
-        );
+      await setDoc(item("cashflow_groups", group.id), {
+        id: group.id,
+        name: group.name ?? "",
+        kind: group.kind ?? "expense",
+        icon: group.icon ?? "other",
+        color: group.color ?? "#6B7280",
+        saved: group.saved === false ? 0 : 1,
+        sort_order: groupIndex,
+      });
+      for (const [itemIndex, itemRow] of (group.items ?? []).entries()) {
+        await setDoc(item("cashflow_items", itemRow.id), {
+          id: itemRow.id,
+          group_id: group.id,
+          name: itemRow.name ?? "",
+          sort_order: itemIndex,
+        });
       }
     }
-  });
   });
 }
 
 export async function saveCashflowEntries(cardId: string, entries: CashflowEntry[]) {
-  const database = await getDb();
-  await database.withTransactionAsync(async () => {
-    await database.runAsync("DELETE FROM cashflow_entries WHERE card_id = ?", cardId);
-    for (const entry of entries) {
-      await database.runAsync(
-        "INSERT INTO cashflow_entries (id, card_id, date, kind, amount, label) VALUES (?, ?, ?, ?, ?, ?)",
-        entry.id ?? `c${Date.now()}`,
-        cardId,
-        entry.date ?? "",
-        entry.kind ?? "expense",
-        entry.amount ?? "",
-        entry.label ?? "",
-      );
-    }
-  });
+  await replaceWhere(
+    "cashflow_entries",
+    "card_id",
+    cardId,
+    entries.map((entry) => ({
+      id: entry.id ?? `c${Date.now()}`,
+      card_id: cardId,
+      date: entry.date ?? "",
+      kind: entry.kind ?? "expense",
+      amount: entry.amount ?? "",
+      label: entry.label ?? "",
+    })),
+  );
 }
 
 export async function getSetting(key: string) {
-  const database = await getDb();
-  await database.execAsync(
-    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)",
-  );
-  const row = await database.getFirstAsync<{ value: string }>(
-    "SELECT value FROM settings WHERE key = ?",
-    key,
-  );
-  return row?.value ?? null;
+  const snap = await getDoc(item("settings", key));
+  const value = snap.data()?.value;
+  return typeof value === "string" ? value : null;
 }
 
 export async function setSetting(key: string, value: string) {
-  const database = await getDb();
-  await database.execAsync(
-    "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)",
-  );
-  await database.runAsync(
-    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    key,
-    value,
-  );
+  await setDoc(item("settings", key), { key, value });
 }
 
 export async function persistLogo(id: string, uri: string) {

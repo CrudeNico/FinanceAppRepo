@@ -19,6 +19,8 @@ node_modules/
 
 # production
 /build
+mobile/dist/
+.firebase/
 
 # misc
 .DS_Store

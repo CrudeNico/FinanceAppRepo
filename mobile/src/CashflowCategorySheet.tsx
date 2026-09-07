@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Keyboard,
   Modal,
   Platform,
@@ -11,10 +10,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { confirmAction } from "./confirmAction";
 import Svg, { Path } from "react-native-svg";
 import { CategoryIcon } from "./categoryIcons";
 import { DraftLooks, PALETTE_COLORS } from "./categoryPalettes";
 import type { CategoryGroup, CategoryItem, CategoryKind } from "./cashflowCategories";
+import { modalCenter } from "./modalCenter";
 import { useTheme } from "./theme";
 
 const INK = "#111111";
@@ -100,7 +101,7 @@ export function CategoryPicker({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.modalBg, { backgroundColor: c.overlay }]}>
+      <View style={[modalCenter.bg, { backgroundColor: c.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: c.modal }]}>
           <Text style={[styles.title, { color: c.ink }]}>Category</Text>
@@ -286,19 +287,13 @@ export function CategoryManager({
   }
 
   function askRemoveGroup(group: CategoryGroup) {
-    Alert.alert(
+    confirmAction(
       "Delete category",
       `Remove ${group.name.trim() || "this category"} and all of its items?`,
-      [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          onChange(groups.filter((item) => item.id !== group.id));
-        },
+      () => {
+        onChange(groups.filter((item) => item.id !== group.id));
       },
-    ]);
+    );
   }
 
   function removeItem(groupId: string, itemId: string) {
@@ -319,7 +314,7 @@ export function CategoryManager({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View
         style={[
-          styles.modalBg,
+          modalCenter.bg,
           { backgroundColor: c.overlay },
           keyboardH > 0 && { justifyContent: "flex-end", paddingBottom: 12 },
           keyboardH > 0 && { marginBottom: keyboardH },

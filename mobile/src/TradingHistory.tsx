@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   StyleSheet,
@@ -14,7 +13,8 @@ import {
 import Svg, { Path } from "react-native-svg";
 import type { TradeRow } from "./models";
 import { useTheme } from "./theme";
-import { useLockBackGesture } from "./useLockBackGesture";
+import { modalCenter } from "./modalCenter";
+import { useRevealSwipe } from "./useRevealSwipe";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -64,10 +64,12 @@ export function TradingHistory({
   entries,
   onChange,
   onAdded,
+  onSwipe,
 }: {
   entries: TradeRow[];
   onChange: (entries: TradeRow[]) => void;
   onAdded?: () => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
   const latestYear = Math.max(2026, ...entries.map((entry) => yearOf(entry.month)));
@@ -189,6 +191,7 @@ export function TradingHistory({
                         onMonth={() => setMonthFor(entry.id)}
                         onProfit={() => setProfitFor(entry.id)}
                         onFlow={() => setFlowFor(entry.id)}
+                        onSwipe={onSwipe}
                       />
                     ))
                   )}
@@ -207,10 +210,10 @@ export function TradingHistory({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={[styles.modalBg, { backgroundColor: c.overlay }]}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
         >
-          <Pressable style={styles.modalFill} onPress={() => setProfitFor(null)}>
-            <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+          <Pressable style={modalCenter.bg} onPress={() => setProfitFor(null)}>
+            <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
               <Text style={[styles.pickerTitle, { color: c.ink }]}>Profit / Loss</Text>
               <View style={styles.flowFields}>
                 <View style={styles.flowField}>
@@ -256,10 +259,10 @@ export function TradingHistory({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={[styles.modalBg, { backgroundColor: c.overlay }]}
+          style={[modalCenter.bg, { backgroundColor: c.overlay }]}
         >
-        <Pressable style={styles.modalFill} onPress={() => setFlowFor(null)}>
-          <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <Pressable style={modalCenter.bg} onPress={() => setFlowFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             <Text style={[styles.pickerTitle, { color: c.ink }]}>Deposit / Withdrawal</Text>
             <View style={styles.flowFields}>
               <View style={styles.flowField}>
@@ -303,8 +306,8 @@ export function TradingHistory({
         animationType="fade"
         onRequestClose={() => setMonthFor(null)}
       >
-        <Pressable style={[styles.modalBg, styles.modalFill, { backgroundColor: c.overlay }]} onPress={() => setMonthFor(null)}>
-          <Pressable style={[styles.picker, { backgroundColor: c.modal }]} onPress={() => undefined}>
+        <Pressable style={[modalCenter.bg, { backgroundColor: c.overlay }]} onPress={() => setMonthFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             <Text style={[styles.pickerTitle, { color: c.ink }]}>Month</Text>
             <View style={styles.monthGrid}>
               {MONTHS.map((label, index) => {
@@ -342,6 +345,7 @@ function TradeHistoryRow({
   onMonth,
   onProfit,
   onFlow,
+  onSwipe,
 }: {
   entry: TradeRow;
   end: string;
@@ -353,75 +357,34 @@ function TradeHistoryRow({
   onMonth: () => void;
   onProfit: () => void;
   onFlow: () => void;
+  onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
-  const pan = useRef(new Animated.Value(0)).current;
-  const offset = useRef(0);
   const back = useLockBackGesture();
-  const openRef = useRef(onOpen);
-  const closeRef = useRef(onClose);
-  openRef.current = onOpen;
-  closeRef.current = onClose;
-
-  function snap(shouldOpen: boolean) {
-    const toValue = shouldOpen ? ACTION : 0;
-    offset.current = toValue;
-    Animated.timing(pan, {
-      toValue,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    if (shouldOpen) openRef.current();
-    else closeRef.current();
-  }
-
-  useEffect(() => {
-    if (!open) {
-      offset.current = 0;
-      pan.setValue(0);
-    }
-  }, [open, pan]);
-
-  const responder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: () => {
-        back.lock();
-        pan.stopAnimation((value) => {
-          offset.current = value;
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        pan.setValue(Math.max(0, Math.min(ACTION, offset.current + gesture.dx)));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        back.unlock();
-        const goingLeft = gesture.dx < -4 || gesture.vx < -0.05;
-        if (goingLeft) {
-          snap(false);
-          return;
-        }
-        if (gesture.dx > 6 || gesture.vx > 0.08) snap(true);
-        else snap(false);
-      },
-      onPanResponderTerminate: () => {
-        back.unlock();
-      },
-    }),
-  ).current;
+  const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
+    open,
+    width: ACTION,
+    onOpen,
+    onClose,
+    onLock: () => {
+      back.lock();
+      onSwipe?.(true);
+    },
+    onUnlock: () => {
+      back.unlock();
+      onSwipe?.(false);
+    },
+    onTap: (x) => {
+      if (x < 52) onMonth();
+      else if (x < 160) onProfit();
+      else onFlow();
+    },
+  });
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
-      <View style={styles.deleteLane}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon />
-        </Pressable>
-      </View>
       <Animated.View
-        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }]}
-        {...responder.panHandlers}
+        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }, swipeStyle]}
       >
         <Pressable onPress={open ? onClose : onMonth} style={styles.monthCol}>
           <Text style={[styles.monthText, { color: c.ink }]}>{monthLabel(entry.month)}</Text>
@@ -443,7 +406,18 @@ function TradeHistoryRow({
           </Text>
         </Pressable>
         <Text style={[styles.endText, styles.endCol, styles.colLine, { color: c.ink, borderLeftColor: c.line }]}>{end}</Text>
+        <View
+          ref={nodeRef}
+          collapsable={false}
+          style={[StyleSheet.absoluteFill, swipeStyle]}
+          {...handlers}
+        />
       </Animated.View>
+      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -547,6 +521,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
   deleteBtn: {
     width: ACTION,

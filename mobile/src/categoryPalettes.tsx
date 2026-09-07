@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { CategoryIconById } from "./categoryIcons";
 import { IONICON_OUTLINES } from "./ioniconNames";
 import { useTheme } from "./theme";
+import { useDragTrack } from "./useRevealSwipe";
 
 const INK = "#111111";
 const MUTED = "#9CA3AF";
@@ -91,24 +92,13 @@ export function ColorPalette({
     changeRef.current(hslToHex((hue + 360) % 360, 80, 50));
   }
 
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onShouldBlockNativeResponder: () => true,
-      onPanResponderGrant: (event) => {
-        grabRef.current?.(true);
-        pick(event.nativeEvent.locationX, event.nativeEvent.locationY);
-      },
-      onPanResponderMove: (event) => pick(event.nativeEvent.locationX, event.nativeEvent.locationY),
-      onPanResponderRelease: () => grabRef.current?.(false),
-      onPanResponderTerminate: () => grabRef.current?.(false),
-    }),
-  ).current;
+  const drag = useDragTrack(
+    (x, y) => pick(x, y),
+    (active) => grabRef.current?.(active),
+  );
 
   return (
-    <View style={styles.wheelWrap} {...pan.panHandlers}>
+    <View style={styles.wheelWrap} {...drag}>
       <Svg width={SIZE} height={SIZE} pointerEvents="none">
         {WHEEL_SLICES.map((slice) => (
           <Path key={slice.d} d={slice.d} fill={slice.color} />
