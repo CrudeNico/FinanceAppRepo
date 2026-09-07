@@ -25,6 +25,7 @@ import {
 } from "./assetData";
 import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
 import { ChartAxis } from "./ChartAxis";
+import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
 const BLUE = "#1D4ED8";

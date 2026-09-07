@@ -17,6 +17,7 @@ import {
 } from "./assetData";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
+import { useLockBackGesture } from "./useLockBackGesture";
 import { useRevealSwipe } from "./useRevealSwipe";
 
 const INK = "#111111";

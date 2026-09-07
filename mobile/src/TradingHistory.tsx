@@ -14,6 +14,7 @@ import Svg, { Path } from "react-native-svg";
 import type { TradeRow } from "./models";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
+import { useLockBackGesture } from "./useLockBackGesture";
 import { useRevealSwipe } from "./useRevealSwipe";
 
 const INK = "#111111";
