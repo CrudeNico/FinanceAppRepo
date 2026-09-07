@@ -133,6 +133,45 @@ export function stockStats(entries: HistoryEntry[]) {
   return { invested, shares, lastPrice, value, returnAmount, returnPct, averagePrice, prices };
 }
 
+export type AssetKind = "start" | "inc" | "dec";
+
+export type AssetEntry = {
+  id: string;
+  date: string;
+  amount: string;
+  kind: AssetKind;
+};
+
+function orderAssetEntries(entries: AssetEntry[]) {
+  return [...entries].sort((a, b) => {
+    const byDate = a.date.localeCompare(b.date);
+    if (byDate !== 0) return byDate;
+    if (a.kind === "start") return -1;
+    if (b.kind === "start") return 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+export function assetStats(entries: AssetEntry[]) {
+  const history: PricePoint[] = [];
+  let value = 0;
+  orderAssetEntries(entries).forEach((entry) => {
+    if (entry.amount.trim() === "") return;
+    const amount = toAmount(entry.amount);
+    if (entry.kind === "start") value = amount;
+    else if (entry.kind === "dec") value -= Math.abs(amount);
+    else value += Math.abs(amount);
+    history.push({ date: entry.date, value });
+  });
+  const prices =
+    history.length === 0 ? [] : [{ date: history[0].date, value: 0 }, ...history];
+  return { value, prices, history };
+}
+
+export function assetValuePoints(entries: AssetEntry[]) {
+  return assetStats(entries).history;
+}
+
 export function stockValuePoints(entries: HistoryEntry[]) {
   const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
   let shares = 0;

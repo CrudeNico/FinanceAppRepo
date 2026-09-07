@@ -11,6 +11,8 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import {
+  assetStats,
+  assetValuePoints,
   cashflowStats,
   chartScale,
   filterSeries,
@@ -24,7 +26,13 @@ import {
   type PricePoint,
   type RangeKey,
 } from "./assetData";
-import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
+import {
+  listCards,
+  loadAssetHistory,
+  loadCashflowEntries,
+  loadStockHistory,
+  loadTradingMonths,
+} from "./db";
 import { ChartAxis } from "./ChartAxis";
 import { ChartPill } from "./ChartPill";
 import { imageSource } from "./imageSource";
@@ -59,7 +67,7 @@ export function HomeNetWorth({
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      loadTotals()
+      loadNetWorthTotals()
         .then((next) => {
           if (cancelled) return;
           setCash(next.cash);
@@ -185,11 +193,12 @@ export function HomeNetWorth({
   );
 }
 
-async function loadTotals() {
-  const [cashCards, tradeCards, stockCards] = await Promise.all([
+export async function loadNetWorthTotals() {
+  const [cashCards, tradeCards, stockCards, assetCards] = await Promise.all([
     listCards("cashflow"),
     listCards("trading"),
     listCards("stock"),
+    listCards("asset"),
   ]);
   const cashSeries: PricePoint[][] = [];
   const tradeSeries: PricePoint[][] = [];
@@ -223,6 +232,15 @@ async function loadTotals() {
         const rows = await loadStockHistory(card.id);
         stocks += stockStats(rows).value;
         stockSeries.push(stockValuePoints(rows));
+      }),
+  );
+  await Promise.all(
+    assetCards
+      .filter((card) => card.saved)
+      .map(async (card) => {
+        const rows = await loadAssetHistory(card.id);
+        stocks += assetStats(rows).value;
+        stockSeries.push(assetValuePoints(rows));
       }),
   );
 

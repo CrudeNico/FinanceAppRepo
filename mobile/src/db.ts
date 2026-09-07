@@ -17,13 +17,13 @@ import {
   ref,
   type StorageReference,
 } from "firebase/storage";
-import { INITIAL_HISTORY } from "./assetData";
+import { INITIAL_HISTORY, type AssetEntry, type AssetKind } from "./assetData";
 import { DEFAULT_CATEGORY_GROUPS, type CategoryGroup } from "./cashflowCategories";
 import { getFirebaseStorage, getFirestoreDb } from "./firebase";
 import type { CashflowEntry, DayEntry, TradeRow } from "./models";
 import { INITIAL_STOCKS, type ListedStock } from "./stockList";
 
-export type CardKind = "stock" | "trading" | "cashflow";
+export type CardKind = "stock" | "trading" | "cashflow" | "asset";
 
 let activeId: string | null = null;
 let categoryLock: Promise<void> = Promise.resolve();
@@ -210,6 +210,40 @@ export async function saveStockHistory(
 ) {
   await replaceWhere(
     "stock_history",
+    "card_id",
+    cardId,
+    entries.map((entry) => ({ ...entry, card_id: cardId })),
+  );
+}
+
+function parseAssetKind(value: unknown): AssetKind {
+  if (value === "inc" || value === "dec" || value === "start") return value;
+  return "inc";
+}
+
+export async function loadAssetHistory(cardId: string): Promise<AssetEntry[]> {
+  const snap = await getDocs(query(col("asset_history"), where("card_id", "==", cardId)));
+  const rows = snap.docs.map((row) => {
+    const data = row.data();
+    return {
+      id: row.id,
+      date: String(data.date ?? ""),
+      amount: String(data.amount ?? ""),
+      kind: parseAssetKind(data.kind),
+    };
+  });
+  if (!rows.some((row) => row.kind === "start" || row.id === "a-start")) {
+    const oldest = [...rows].sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (oldest) oldest.kind = "start";
+  }
+  return rows
+    .map((row) => (row.id === "a-start" ? { ...row, kind: "start" as const } : row))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function saveAssetHistory(cardId: string, entries: AssetEntry[]) {
+  await replaceWhere(
+    "asset_history",
     "card_id",
     cardId,
     entries.map((entry) => ({ ...entry, card_id: cardId })),

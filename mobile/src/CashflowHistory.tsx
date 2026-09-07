@@ -18,6 +18,7 @@ import { loadCategoryGroups, saveCategoryGroups } from "./db";
 import type { CashflowEntry } from "./models";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
+import { TableBody } from "./TableBody";
 import { useLockBackGesture } from "./useLockBackGesture";
 import { useRevealSwipe } from "./useRevealSwipe";
 
@@ -231,6 +232,7 @@ export function CashflowHistory({
                                   Amt
                                 </Text>
                               </View>
+                              <TableBody rows={rows.length} onLock={onSwipe}>
                               {rows.map((entry, index) => (
                                 <FlowRow
                                   key={entry.id}
@@ -252,6 +254,7 @@ export function CashflowHistory({
                                   onSwipe={onSwipe}
                                 />
                               ))}
+                              </TableBody>
                             </View>
                           ) : null}
                         </View>

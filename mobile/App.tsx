@@ -7,6 +7,7 @@ import { enterProfile, getLastTheme, getSession, initProfiles, logoutProfile } f
 import { getSetting, setSetting } from "./src/db";
 import { HomeScreen } from "./src/HomeScreen";
 import { StockScreen } from "./src/StockScreen";
+import { AssetScreen } from "./src/AssetScreen";
 import { CashflowScreen } from "./src/CashflowScreen";
 import { TradingScreen } from "./src/TradingScreen";
 import { SettingsScreen } from "./src/SettingsScreen";
@@ -169,6 +170,15 @@ function ThemedApp({ openSettings }: { openSettings: boolean }) {
         <Stack.Screen
           name="Stock"
           component={StockScreen}
+          options={{
+            animation: "none",
+            fullScreenGestureEnabled: false,
+            gestureResponseDistance: 20,
+          }}
+        />
+        <Stack.Screen
+          name="Asset"
+          component={AssetScreen}
           options={{
             animation: "none",
             fullScreenGestureEnabled: false,

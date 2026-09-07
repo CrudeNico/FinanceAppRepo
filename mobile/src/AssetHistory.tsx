@@ -14,7 +14,8 @@ import {
   formatDayMonth,
   todayIso,
   yearOf,
-  type HistoryEntry,
+  type AssetEntry,
+  type AssetKind,
 } from "./assetData";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
@@ -26,17 +27,29 @@ const INK = "#111111";
 const MUTED = "#9CA3AF";
 const LINE = "#E8E8E8";
 const RED = "#DC2626";
+const GREEN = "#16A34A";
 const ACTION = 68;
+const START_ID = "a-start";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function HistoryCard({
+function isStart(entry: AssetEntry) {
+  return entry.id === START_ID || entry.kind === "start";
+}
+
+function kindLabel(kind: AssetKind) {
+  if (kind === "start") return "Value";
+  if (kind === "dec") return "Dec";
+  return "Inc";
+}
+
+export function AssetHistory({
   entries,
   onChange,
   onAdded,
   onSwipe,
 }: {
-  entries: HistoryEntry[];
-  onChange: (entries: HistoryEntry[]) => void;
+  entries: AssetEntry[];
+  onChange: (entries: AssetEntry[]) => void;
   onAdded?: () => void;
   onSwipe?: (active: boolean) => void;
 }) {
@@ -60,9 +73,14 @@ export function HistoryCard({
   }
 
   function addRow() {
-    if (entries.some((entry) => entry.amount.trim() === "" || entry.price.trim() === "")) return;
-    const id = `h${Date.now()}`;
-    onChange([{ id, date: todayIso(), amount: "", price: "", fx: "" }, ...entries]);
+    const start = entries.find(isStart);
+    if (!start) {
+      onChange([{ id: START_ID, date: todayIso(), amount: "", kind: "start" }, ...entries]);
+    } else {
+      if (start.amount.trim() === "") return;
+      if (entries.some((entry) => entry.amount.trim() === "")) return;
+      onChange([{ id: `h${Date.now()}`, date: todayIso(), amount: "", kind: "inc" }, ...entries]);
+    }
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     setOpenSwipe(null);
     setSwipeOn(false);
@@ -70,11 +88,13 @@ export function HistoryCard({
     onAdded?.();
   }
 
-  function update(id: string, patch: Partial<HistoryEntry>) {
+  function update(id: string, patch: Partial<AssetEntry>) {
     onChange(entries.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
   }
 
   function remove(id: string) {
+    const row = entries.find((entry) => entry.id === id);
+    if (!row || isStart(row)) return;
     onChange(entries.filter((entry) => entry.id !== id));
     setOpenSwipe(null);
   }
@@ -86,11 +106,9 @@ export function HistoryCard({
     <>
       <View style={styles.sectionBar}>
         <Text style={[styles.section, { color: c.ink }]}>History</Text>
-        <View style={styles.actions}>
-          <Pressable onPress={addRow} hitSlop={10} style={styles.actionBtn}>
-            <Text style={[styles.plus, { color: c.ink }]}>+</Text>
-          </Pressable>
-        </View>
+        <Pressable onPress={addRow} hitSlop={10} style={styles.actionBtn}>
+          <Text style={[styles.plus, { color: c.ink }]}>+</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
@@ -98,7 +116,11 @@ export function HistoryCard({
           const open = openYears.includes(year);
           const rows = entries
             .filter((entry) => yearOf(entry.date) === year)
-            .sort((a, b) => (a.date < b.date ? 1 : -1));
+            .sort((a, b) => {
+              if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+              if (isStart(a) !== isStart(b)) return isStart(a) ? 1 : -1;
+              return a.id < b.id ? 1 : -1;
+            });
           return (
             <View key={year} style={styles.yearBlock}>
               <Pressable onPress={() => toggleYear(year)} style={styles.yearHead}>
@@ -114,29 +136,34 @@ export function HistoryCard({
                 >
                   <View style={[styles.tableHead, { backgroundColor: c.table, borderBottomColor: c.line }]}>
                     <Text style={[styles.headCell, styles.dateCol, { color: c.muted }]}>Date</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>Amt</Text>
-                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>Px</Text>
-                    <Text style={[styles.headCell, styles.fxCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>FX</Text>
+                    <Text style={[styles.headCell, styles.typeCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>
+                      Type
+                    </Text>
+                    <Text style={[styles.headCell, styles.numCol, styles.colLine, { color: c.muted, borderLeftColor: c.line }]}>
+                      Amt
+                    </Text>
                   </View>
                   {rows.length === 0 ? (
-                    <Text style={[styles.empty, { color: c.muted }]}>No buys yet</Text>
+                    <Text style={[styles.empty, { color: c.muted }]}>No entries yet</Text>
                   ) : (
                     <TableBody rows={rows.length} onLock={onSwipe}>
-                    {rows.map((entry, index) => (
-                      <HistoryRow
-                        key={entry.id}
-                        entry={entry}
-                        last={index === rows.length - 1}
-                        open={openSwipe === entry.id}
-                        enabled={swipeOn}
-                        onOpen={() => setOpenSwipe(entry.id)}
-                        onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
-                        onDelete={() => remove(entry.id)}
-                        onDate={() => setCalendarFor(entry.id)}
-                        onUpdate={(patch) => update(entry.id, patch)}
-                        onSwipe={onSwipe}
-                      />
-                    ))}
+                      {rows.map((entry, index) => (
+                        <AssetRow
+                          key={entry.id}
+                          entry={entry}
+                          last={index === rows.length - 1}
+                          open={!isStart(entry) && openSwipe === entry.id}
+                          enabled={swipeOn && !isStart(entry)}
+                          onOpen={() => {
+                            if (!isStart(entry)) setOpenSwipe(entry.id);
+                          }}
+                          onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
+                          onDelete={() => remove(entry.id)}
+                          onDate={() => setCalendarFor(entry.id)}
+                          onUpdate={(patch) => update(entry.id, patch)}
+                          onSwipe={onSwipe}
+                        />
+                      ))}
                     </TableBody>
                   )}
                 </View>
@@ -172,7 +199,7 @@ export function HistoryCard({
   );
 }
 
-function HistoryRow({
+function AssetRow({
   entry,
   last,
   open,
@@ -184,7 +211,7 @@ function HistoryRow({
   onUpdate,
   onSwipe,
 }: {
-  entry: HistoryEntry;
+  entry: AssetEntry;
   last: boolean;
   open: boolean;
   enabled: boolean;
@@ -192,14 +219,13 @@ function HistoryRow({
   onClose: () => void;
   onDelete: () => void;
   onDate: () => void;
-  onUpdate: (patch: Partial<HistoryEntry>) => void;
+  onUpdate: (patch: Partial<AssetEntry>) => void;
   onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
   const rowWidth = useRef(0);
   const amountRef = useRef<TextInput>(null);
-  const priceRef = useRef<TextInput>(null);
-  const fxRef = useRef<TextInput>(null);
+  const start = isStart(entry);
   const back = useLockBackGesture();
   const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
     open,
@@ -216,14 +242,12 @@ function HistoryRow({
       onSwipe?.(false);
     },
     onTap: (x) => {
-      const width = rowWidth.current || 1;
       const dateW = 62;
-      const fxW = 52;
-      const mid = Math.max((width - dateW - fxW) / 2, 1);
+      const typeW = 64;
       if (x < dateW) onDate();
-      else if (x < dateW + mid) amountRef.current?.focus();
-      else if (x < dateW + mid + mid) priceRef.current?.focus();
-      else fxRef.current?.focus();
+      else if (x < dateW + typeW) {
+        if (!start) onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
+      } else amountRef.current?.focus();
     },
   });
 
@@ -247,23 +271,27 @@ function HistoryRow({
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
           <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
         </Pressable>
+        <Pressable
+          onPress={() => {
+            if (start) return;
+            onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
+          }}
+          style={[styles.typeCol, styles.colLine, { borderLeftColor: c.line }]}
+        >
+          <Text
+            style={[
+              styles.typeText,
+              { color: start ? c.ink : entry.kind === "dec" ? RED : GREEN },
+            ]}
+          >
+            {kindLabel(entry.kind)}
+          </Text>
+        </Pressable>
         <Field
           ref={amountRef}
           value={entry.amount}
           onChange={(amount) => onUpdate({ amount })}
           style={[styles.numCol, styles.colLine, { borderLeftColor: c.line }]}
-        />
-        <Field
-          ref={priceRef}
-          value={entry.price}
-          onChange={(price) => onUpdate({ price })}
-          style={[styles.numCol, styles.colLine, { borderLeftColor: c.line }]}
-        />
-        <Field
-          ref={fxRef}
-          value={entry.fx}
-          onChange={(fx) => onUpdate({ fx })}
-          style={[styles.fxCol, styles.colLine, { borderLeftColor: c.line }]}
         />
         <View
           ref={nodeRef}
@@ -319,19 +347,13 @@ function MiniCalendar({
   return (
     <View>
       <View style={styles.calHead}>
-        <Pressable
-          onPress={() => setCursor(new Date(year, month - 1, 1))}
-          hitSlop={8}
-        >
+        <Pressable onPress={() => setCursor(new Date(year, month - 1, 1))} hitSlop={8}>
           <Text style={[styles.calNav, { color: c.ink }]}>‹</Text>
         </Pressable>
         <Text style={[styles.calTitle, { color: c.ink }]}>
           {MONTHS[month]} {year}
         </Text>
-        <Pressable
-          onPress={() => setCursor(new Date(year, month + 1, 1))}
-          hitSlop={8}
-        >
+        <Pressable onPress={() => setCursor(new Date(year, month + 1, 1))} hitSlop={8}>
           <Text style={[styles.calNav, { color: c.ink }]}>›</Text>
         </Pressable>
       </View>
@@ -412,7 +434,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   section: { color: INK, fontSize: 17, fontWeight: "400" },
-  actions: { flexDirection: "row", alignItems: "center", gap: 12 },
   actionBtn: { paddingHorizontal: 2, paddingVertical: 2 },
   plus: { color: INK, fontSize: 24, lineHeight: 26, fontWeight: "300" },
   card: {
@@ -485,24 +506,12 @@ const styles = StyleSheet.create({
     borderLeftColor: LINE,
   },
   dateCol: { width: 62, paddingHorizontal: 6, justifyContent: "center" },
+  typeCol: { width: 64, paddingHorizontal: 6, justifyContent: "center" },
   numCol: { flex: 1 },
-  fxCol: { width: 52 },
   dateText: { color: INK, fontSize: 13 },
+  typeText: { fontSize: 13, fontWeight: "600" },
   input: { color: INK, fontSize: 13, paddingVertical: 8, paddingHorizontal: 6 },
   empty: { color: MUTED, fontSize: 12, paddingVertical: 8, paddingHorizontal: 8 },
-  modalBg: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  calendar: {
-    width: 280,
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 14,
-  },
   calHead: {
     flexDirection: "row",
     alignItems: "center",
@@ -521,7 +530,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dayInner: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  dayOn: { backgroundColor: INK },
   dayText: { color: INK, fontSize: 13 },
-  dayTextOn: { color: "#ffffff" },
 });

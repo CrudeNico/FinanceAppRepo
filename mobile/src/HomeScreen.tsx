@@ -19,10 +19,11 @@ import { forgetImage, imageSource } from "./imageSource";
 import { useRevealSwipe } from "./useRevealSwipe";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
-import { cashflowStats, stockStats, tradingStats } from "./assetData";
+import { assetStats, cashflowStats, stockStats, tradingStats } from "./assetData";
 import {
   deleteCard,
   listCards,
+  loadAssetHistory,
   loadCashflowEntries,
   loadStockHistory,
   loadTradingMonths,
@@ -41,6 +42,7 @@ const ACTION = 68;
 
 async function cardValue(kind: CardKind, id: string) {
   if (kind === "trading") return tradingStats(await loadTradingMonths(id)).value;
+  if (kind === "asset") return assetStats(await loadAssetHistory(id)).value;
   if (kind === "stock") return stockStats(await loadStockHistory(id)).value;
   return cashflowStats(await loadCashflowEntries(id)).value;
 }
@@ -138,6 +140,27 @@ export function HomeScreen({
       }
     />
   );
+  const assets = (
+    <CardSection
+      key="asset"
+      title="Assets"
+      kind="asset"
+      onSwipe={setLockScroll}
+      onOpenItem={(stock) =>
+        navigation.navigate("Asset", {
+          stock: {
+            id: stock.id,
+            ticker: stock.ticker,
+            name: stock.name,
+            image: stock.image ?? null,
+            letter: stock.letter ?? null,
+            color: stock.color ?? null,
+            saved: true,
+          },
+        })
+      }
+    />
+  );
 
   return (
     <KeyboardAvoidingView
@@ -172,9 +195,23 @@ export function HomeScreen({
           }
         />
         <View style={styles.sectionGap} />
-        {tradeFirst ? trading : stocks}
-        <View style={styles.sectionGap} />
-        {tradeFirst ? stocks : trading}
+        {tradeFirst ? (
+          <>
+            {trading}
+            <View style={styles.sectionGap} />
+            {stocks}
+            <View style={styles.sectionGap} />
+            {assets}
+          </>
+        ) : (
+          <>
+            {stocks}
+            <View style={styles.sectionGap} />
+            {assets}
+            <View style={styles.sectionGap} />
+            {trading}
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

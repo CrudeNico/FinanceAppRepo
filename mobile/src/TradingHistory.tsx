@@ -15,6 +15,7 @@ import type { TradeRow } from "./models";
 import { formatCompact } from "./assetData";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
+import { TableBody } from "./TableBody";
 import { useLockBackGesture } from "./useLockBackGesture";
 import { useRevealSwipe } from "./useRevealSwipe";
 
@@ -229,7 +230,8 @@ export function TradingHistory({
                   {rows.length === 0 ? (
                     <Text style={[styles.empty, { color: c.muted }]}>No months yet</Text>
                   ) : (
-                    rows.map((entry, index) => (
+                    <TableBody rows={rows.length} onLock={onSwipe}>
+                    {rows.map((entry, index) => (
                       <TradeHistoryRow
                         key={entry.id}
                         entry={entry}
@@ -250,7 +252,8 @@ export function TradingHistory({
                         onFlow={() => setFlowFor(entry.id)}
                         onSwipe={onSwipe}
                       />
-                    ))
+                    ))}
+                    </TableBody>
                   )}
                 </View>
               ) : null}

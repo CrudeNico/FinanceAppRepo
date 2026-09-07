@@ -123,6 +123,7 @@ export async function deleteProfile(id: string, password: string) {
   const collections = [
     "cards",
     "stock_history",
+    "asset_history",
     "trading_months",
     "trading_days",
     "cashflow_entries",
