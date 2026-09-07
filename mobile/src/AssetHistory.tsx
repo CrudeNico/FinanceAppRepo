@@ -39,8 +39,8 @@ function isStart(entry: AssetEntry) {
 
 function kindLabel(kind: AssetKind) {
   if (kind === "start") return "Value";
-  if (kind === "dec") return "Dec";
-  return "Inc";
+  if (kind === "dec") return "Subtract";
+  return "Add";
 }
 
 export function AssetHistory({
@@ -61,6 +61,7 @@ export function AssetHistory({
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
+  const [typeFor, setTypeFor] = useState<string | null>(null);
   const [swipeOn, setSwipeOn] = useState(true);
   const [startAmount, setStartAmount] = useState("");
   const startRow = entries.find(isStart) ?? null;
@@ -111,6 +112,7 @@ export function AssetHistory({
   }
 
   const calendarEntry = entries.find((entry) => entry.id === calendarFor) ?? null;
+  const typeEntry = entries.find((entry) => entry.id === typeFor) ?? null;
   const back = useLockBackGesture();
 
   return (
@@ -171,6 +173,9 @@ export function AssetHistory({
                           onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
                           onDelete={() => remove(entry.id)}
                           onDate={() => setCalendarFor(entry.id)}
+                          onType={() => {
+                            if (!isStart(entry)) setTypeFor(entry.id);
+                          }}
                           onUpdate={(patch) => update(entry.id, patch)}
                           onSwipe={onSwipe}
                         />
@@ -212,6 +217,43 @@ export function AssetHistory({
       </Modal>
 
       <Modal
+        visible={Boolean(typeEntry)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTypeFor(null)}
+      >
+        <Pressable style={[modalCenter.bg, { backgroundColor: c.overlay }]} onPress={() => setTypeFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+            <Text style={[styles.sheetTitle, { color: c.ink }]}>Type</Text>
+            {(
+              [
+                { kind: "inc" as const, label: "Add" },
+                { kind: "dec" as const, label: "Subtract" },
+              ]
+            ).map((option) => {
+              const on = typeEntry?.kind === option.kind;
+              return (
+                <Pressable
+                  key={option.kind}
+                  onPress={() => {
+                    if (!typeEntry) return;
+                    update(typeEntry.id, { kind: option.kind });
+                    setTypeFor(null);
+                  }}
+                  style={[
+                    styles.choice,
+                    { borderColor: on ? c.ink : c.line, backgroundColor: on ? c.ink : c.modal },
+                  ]}
+                >
+                  <Text style={[styles.choiceText, { color: on ? c.bg : c.ink }]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={Boolean(calendarEntry)}
         transparent
         animationType="fade"
@@ -246,6 +288,7 @@ function AssetRow({
   onClose,
   onDelete,
   onDate,
+  onType,
   onUpdate,
   onSwipe,
 }: {
@@ -257,6 +300,7 @@ function AssetRow({
   onClose: () => void;
   onDelete: () => void;
   onDate: () => void;
+  onType: () => void;
   onUpdate: (patch: Partial<AssetEntry>) => void;
   onSwipe?: (active: boolean) => void;
 }) {
@@ -280,8 +324,8 @@ function AssetRow({
     },
     onTap: (x) => {
       if (x < 62) onDate();
-      else if (x < 126) {
-        if (!start) onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
+      else if (x < 150) {
+        if (!start) onType();
       } else amountRef.current?.focus();
     },
   });
@@ -310,7 +354,7 @@ function AssetRow({
               return;
             }
             if (start) return;
-            onUpdate({ kind: entry.kind === "dec" ? "inc" : "dec" });
+            onType();
           }}
           style={[styles.typeCol, styles.colLine, { borderLeftColor: c.line }]}
         >
@@ -542,7 +586,7 @@ const styles = StyleSheet.create({
     borderLeftColor: LINE,
   },
   dateCol: { width: 62, paddingHorizontal: 6, justifyContent: "center" },
-  typeCol: { width: 64, paddingHorizontal: 6, justifyContent: "center" },
+  typeCol: { width: 88, paddingHorizontal: 6, justifyContent: "center" },
   numCol: { flex: 1 },
   dateText: { color: INK, fontSize: 13 },
   typeText: { fontSize: 13, fontWeight: "600" },
@@ -567,6 +611,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   doneText: { color: "#ffffff", fontSize: 15 },
+  choice: {
+    borderWidth: 1,
+    borderColor: LINE,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  choiceText: { color: INK, fontSize: 15 },
   calHead: {
     flexDirection: "row",
     alignItems: "center",
