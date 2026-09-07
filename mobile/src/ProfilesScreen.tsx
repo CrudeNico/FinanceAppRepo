@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import {
   addProfile,
+  checkProfilePassword,
   deleteProfile,
   listProfiles,
   type UserProfile,
@@ -29,9 +30,11 @@ export function ProfilesScreen({
   const [manage, setManage] = useState(false);
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<UserProfile | null>(null);
+  const [signing, setSigning] = useState<UserProfile | null>(null);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const busy = useRef(false);
 
   function reload() {
     listProfiles().then(setProfiles).catch(() => setProfiles([]));
@@ -44,6 +47,7 @@ export function ProfilesScreen({
   function closeSheets() {
     setAdding(false);
     setRemoving(null);
+    setSigning(null);
     setName("");
     setPassword("");
     setError("");
@@ -51,25 +55,57 @@ export function ProfilesScreen({
 
   async function confirmAdd() {
     const next = name.trim();
-    if (!next || !password) return;
+    const code = password.trim();
+    if (!next || !code || busy.current) return;
+    busy.current = true;
     try {
-      await addProfile(next, password);
+      await addProfile(next, code);
       closeSheets();
       reload();
     } catch {
       setError("Could not add profile");
+    } finally {
+      busy.current = false;
+    }
+  }
+
+  async function confirmEnter() {
+    if (!signing || busy.current) return;
+    busy.current = true;
+    try {
+      const ok = await checkProfilePassword(signing.id, password);
+      if (!ok) {
+        setError("Wrong password");
+        return;
+      }
+      const id = signing.id;
+      closeSheets();
+      onEnter(id);
+    } catch {
+      setError("Could not sign in");
+    } finally {
+      busy.current = false;
     }
   }
 
   async function confirmDelete() {
-    if (!removing) return;
-    const ok = await deleteProfile(removing.id, password);
-    if (!ok) {
-      setError("Wrong password");
-      return;
+    if (!removing || busy.current) return;
+    busy.current = true;
+    try {
+      const ok = await deleteProfile(removing.id, password);
+      if (!ok) {
+        setError("Wrong password");
+        reload();
+        return;
+      }
+      closeSheets();
+      reload();
+    } catch {
+      setError("Could not delete profile");
+      reload();
+    } finally {
+      busy.current = false;
     }
-    closeSheets();
-    reload();
   }
 
   return (
@@ -79,21 +115,24 @@ export function ProfilesScreen({
           <View key={profile.id} style={styles.cell}>
             <Pressable
               onPress={() => {
-                if (manage) {
-                  setPassword("");
-                  setError("");
-                  setRemoving(profile);
-                } else onEnter(profile.id);
+                setPassword("");
+                setError("");
+                if (manage) setRemoving(profile);
+                else setSigning(profile);
               }}
               style={styles.avatarWrap}
             >
-              {imageSource(profile.avatar) ? (
-                <Image source={imageSource(profile.avatar)} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatarEmpty, { backgroundColor: c.lift }]}>
-                  <Text style={[styles.initial, { color: c.ink }]}>{profile.name.trim()[0] || "P"}</Text>
-                </View>
-              )}
+              <View style={[styles.avatarClip, { backgroundColor: c.lift }]}>
+                {imageSource(profile.avatar) ? (
+                  <Image source={imageSource(profile.avatar)} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarEmpty, { backgroundColor: c.lift }]}>
+                    <Text style={[styles.initial, { color: c.ink }]}>
+                      {profile.name.trim()[0] || "P"}
+                    </Text>
+                  </View>
+                )}
+              </View>
               {manage ? (
                 <View style={styles.remove}>
                   <Text style={styles.removeText}>×</Text>
@@ -113,9 +152,11 @@ export function ProfilesScreen({
               setError("");
               setAdding(true);
             }}
-            style={[styles.avatarWrap, styles.add, { borderColor: c.line }]}
+            style={styles.avatarWrap}
           >
-            <Text style={[styles.plus, { color: c.muted }]}>+</Text>
+            <View style={[styles.avatarClip, styles.add, { borderColor: c.line }]}>
+              <Text style={[styles.plus, { color: c.muted }]}>+</Text>
+            </View>
           </Pressable>
           <Text style={[styles.name, { color: c.ink }]}>Add</Text>
         </View>
@@ -150,6 +191,30 @@ export function ProfilesScreen({
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Pressable onPress={confirmAdd} style={[styles.addBtn, { backgroundColor: c.ink }]}>
               <Text style={[styles.addBtnText, { color: c.bg }]}>Add</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={Boolean(signing)} transparent animationType="fade">
+        <Pressable style={[styles.modalBg, { backgroundColor: c.overlay }]} onPress={closeSheets}>
+          <Pressable style={[styles.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+            <Text style={[styles.sheetTitle, { color: c.ink }]}>Sign in {signing?.name}?</Text>
+            <TextInput
+              value={password}
+              onChangeText={(value) => {
+                setPassword(value);
+                setError("");
+              }}
+              placeholder="Password"
+              placeholderTextColor={c.muted}
+              secureTextEntry
+              autoFocus
+              style={[styles.input, { color: c.ink, borderColor: c.line, backgroundColor: c.input }]}
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable onPress={confirmEnter} style={[styles.addBtn, { backgroundColor: c.ink }]}>
+              <Text style={[styles.addBtnText, { color: c.bg }]}>Continue</Text>
             </Pressable>
           </Pressable>
         </Pressable>
@@ -200,14 +265,20 @@ const styles = StyleSheet.create({
   avatarWrap: {
     width: 88,
     height: 88,
-    borderRadius: 8,
-    overflow: "visible",
   },
-  avatar: { width: 88, height: 88, borderRadius: 8 },
+  avatarClip: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatar: { width: 88, height: 88, borderRadius: 44 },
   avatarEmpty: {
     width: 88,
     height: 88,
-    borderRadius: 8,
+    borderRadius: 44,
     backgroundColor: "#333333",
     alignItems: "center",
     justifyContent: "center",
@@ -216,22 +287,21 @@ const styles = StyleSheet.create({
   add: {
     borderWidth: 2,
     borderColor: "#6B7280",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 44,
   },
   plus: { color: "#9CA3AF", fontSize: 40, lineHeight: 44 },
   name: { color: "#D1D5DB", fontSize: 13, marginTop: 8, textAlign: "center" },
   remove: {
     position: "absolute",
-    right: -6,
-    top: -6,
+    right: -4,
+    top: -4,
     width: 22,
     height: 22,
     borderRadius: 11,
     backgroundColor: "#DC2626",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
   },
   removeText: { color: "#ffffff", fontSize: 16, lineHeight: 18 },
   manage: { marginTop: 40, paddingVertical: 10, paddingHorizontal: 16 },

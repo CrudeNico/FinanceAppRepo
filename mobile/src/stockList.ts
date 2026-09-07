@@ -6,6 +6,7 @@ export type ListedStock = {
   letter?: string;
   color?: string;
   saved?: boolean;
+  saving?: boolean;
 };
 
 export const INITIAL_STOCKS: ListedStock[] = [

@@ -15,10 +15,10 @@ import Svg, {
   Line,
   LinearGradient,
   Path,
-  Rect,
   Stop,
   Text as SvgText,
 } from "react-native-svg";
+import { ChartPill } from "./ChartPill";
 import { HistoryCard } from "./HistoryCard";
 import {
   ASSET,
@@ -330,8 +330,8 @@ function PriceChart({
           strokeWidth="1"
           strokeDasharray="4 4"
         />
-        <Pill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
-        <Pill x={width - 50} y={averageY - 10} label={average.toFixed(2)} fill="#4B5563" />
+        <ChartPill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
+        <ChartPill x={width - 50} y={averageY - 10} label={average.toFixed(2)} fill="#4B5563" />
         {hoverPoint ? (
           <>
             <Line
@@ -356,34 +356,6 @@ function PriceChart({
         ) : null}
       </Svg>
     </View>
-  );
-}
-
-function Pill({
-  x,
-  y,
-  label,
-  fill,
-}: {
-  x: number;
-  y: number;
-  label: string;
-  fill: string;
-}) {
-  return (
-    <>
-      <Rect x={x} y={y} width={50} height={20} rx={10} fill={fill} />
-      <SvgText
-        x={x + 25}
-        y={y + 14}
-        fill="#ffffff"
-        fontSize="10"
-        fontWeight="600"
-        textAnchor="middle"
-      >
-        {label}
-      </SvgText>
-    </>
   );
 }
 

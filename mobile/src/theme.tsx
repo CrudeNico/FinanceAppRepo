@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { getSetting, setSetting } from "./db";
 import { getActiveProfile, setLastTheme, updateProfileAvatar } from "./profiles";
 
@@ -99,7 +100,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [avatar, mode],
   );
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: mode === "dark" ? "#0B0B0B" : "#ffffff",
+        }}
+      >
+        <ActivityIndicator color={mode === "dark" ? "#F4F4F5" : "#111111"} />
+      </View>
+    );
+  }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

@@ -1,4 +1,10 @@
+const cache = new Map<string, { uri: string }>();
+
 export function imageSource(uri?: string | null) {
   if (!uri || uri.startsWith("blob:")) return undefined;
-  return { uri };
+  const existing = cache.get(uri);
+  if (existing) return existing;
+  const next = { uri };
+  cache.set(uri, next);
+  return next;
 }

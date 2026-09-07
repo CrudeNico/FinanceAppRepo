@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { DarkTheme, DefaultTheme, NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
@@ -20,6 +21,8 @@ export default function App() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [loginDark, setLoginDark] = useState(false);
   const [openSettings, setOpenSettings] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const leaving = useRef(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -54,26 +57,43 @@ export default function App() {
   }, []);
 
   async function enter(id: string) {
-    const profile = await enterProfile(id);
-    if (!profile) return;
-    const seen = await getSetting("setupDone");
-    if (!seen) {
-      await setSetting("setupDone", "1");
-      setOpenSettings(true);
-    } else {
-      setOpenSettings(false);
+    setEntering(true);
+    try {
+      const profile = await enterProfile(id);
+      if (!profile) return;
+      const seen = await getSetting("setupDone");
+      if (!seen) {
+        await setSetting("setupDone", "1");
+        setOpenSettings(true);
+      } else {
+        setOpenSettings(false);
+      }
+      setProfileId(profile.id);
+    } finally {
+      setEntering(false);
     }
-    setProfileId(profile.id);
   }
 
-  async function logout() {
-    const theme = await getLastTheme();
-    setLoginDark(theme === "dark");
-    await logoutProfile();
+  function logout() {
+    if (leaving.current) return;
+    leaving.current = true;
     setProfileId(null);
+    setOpenSettings(false);
+    getLastTheme()
+      .then((theme) => setLoginDark(theme === "dark"))
+      .catch(() => undefined)
+      .finally(() => {
+        logoutProfile()
+          .catch(() => undefined)
+          .finally(() => {
+            leaving.current = false;
+          });
+      });
   }
 
-  if (!ready) return null;
+  if (!ready || entering) {
+    return <BootLoading dark={loginDark} />;
+  }
 
   if (!profileId) {
     return (
@@ -89,10 +109,25 @@ export default function App() {
 
   return (
     <ThemeProvider key={profileId}>
-      <SessionProvider logout={() => logout().catch(() => undefined)}>
+      <SessionProvider logout={logout}>
         <ThemedApp openSettings={openSettings} />
       </SessionProvider>
     </ThemeProvider>
+  );
+}
+
+function BootLoading({ dark }: { dark?: boolean }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: dark ? "#0B0B0B" : "#ffffff",
+      }}
+    >
+      <ActivityIndicator color={dark ? "#F4F4F5" : "#111111"} />
+    </View>
   );
 }
 

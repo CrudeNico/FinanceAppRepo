@@ -95,22 +95,31 @@ export async function addProfile(name: string, password: string) {
     name: name.trim() || "Profile",
     avatar: null,
     file: `finance-${id}.db`,
-    password,
+    password: password.trim(),
     created_at: Date.now(),
   });
   return id;
 }
 
+function passwordMatches(stored: unknown, given: string) {
+  return String(stored ?? "") === given.trim();
+}
+
 export async function checkProfilePassword(id: string, password: string) {
   const snap = await getDoc(doc(getFirestoreDb(), "profiles", id));
+  if (!snap.exists()) return false;
   const stored = snap.data()?.password;
-  return Boolean(stored) && stored === password;
+  if (stored == null || stored === "") return true;
+  return passwordMatches(stored, password);
 }
 
 export async function deleteProfile(id: string, password: string) {
   if (!(await checkProfilePassword(id, password))) return false;
   const db = getFirestoreDb();
   const profileRef = doc(db, "profiles", id);
+  const still = await getDoc(profileRef);
+  if (!still.exists()) return false;
+  if (!passwordMatches(still.data()?.password, password)) return false;
   const collections = [
     "cards",
     "stock_history",

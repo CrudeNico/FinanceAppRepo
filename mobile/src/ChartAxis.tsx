@@ -1,4 +1,4 @@
-import { StyleSheet, Text } from "react-native";
+import { Platform, StyleSheet, Text } from "react-native";
 
 export function ChartAxis({
   ticks,
@@ -29,5 +29,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontStyle: "normal",
     fontWeight: "400",
+    fontFamily: Platform.select({
+      ios: "System",
+      android: "sans-serif",
+      default: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    }),
   },
 });

@@ -56,7 +56,10 @@ export function SettingsScreen({
         />
       </Pressable>
 
-      <Pressable onPress={logout} style={[styles.row, { backgroundColor: c.cardSoft, marginTop: 10 }]}>
+      <Pressable
+        onPress={logout}
+        style={[styles.row, { backgroundColor: c.cardSoft, marginTop: 10, zIndex: 2 }]}
+      >
         <Text style={[styles.rowLabel, { color: c.ink }]}>Log out</Text>
       </Pressable>
     </View>

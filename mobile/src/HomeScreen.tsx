@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
+  ActivityIndicator,
   Animated,
   Image,
   KeyboardAvoidingView,
@@ -65,6 +66,17 @@ async function loadSortedCards(kind: CardKind) {
     return b.value - a.value;
   });
   return ranked.map((item) => item.card);
+}
+
+function mergeCards(rows: ListedStock[], current: ListedStock[]) {
+  const ids = new Set(rows.map((item) => item.id));
+  return [
+    ...rows.map((row) => {
+      const local = current.find((item) => item.id === row.id);
+      return local?.saving ? { ...row, saving: true } : row;
+    }),
+    ...current.filter((item) => !ids.has(item.id)),
+  ];
 }
 
 export function HomeScreen({
@@ -186,7 +198,18 @@ function CardSection({
 
   useFocusEffect(
     useCallback(() => {
-      loadSortedCards(kind).then(setItems).catch(() => setItems([]));
+      let cancelled = false;
+      loadSortedCards(kind)
+        .then((rows) => {
+          if (cancelled) return;
+          setItems((current) => mergeCards(rows, current));
+        })
+        .catch(() => {
+          if (!cancelled) setItems((current) => current.filter((item) => !item.saved || item.saving));
+        });
+      return () => {
+        cancelled = true;
+      };
     }, [kind]),
   );
 
@@ -207,18 +230,24 @@ function CardSection({
     setOpenSwipe(null);
   }
 
-  function confirmItem(id: string) {
-    setItems((current) => {
-      const next = current.map((item) => {
-        if (item.id !== id) return item;
-        if (!item.ticker.trim() && !item.name.trim()) return item;
-        return { ...item, saved: true };
-      });
-      const saved = next.find((item) => item.id === id && item.saved);
-      if (saved) upsertCard(kind, saved);
-      return next;
-    });
-    loadSortedCards(kind).then(setItems).catch(() => undefined);
+  async function confirmItem(id: string) {
+    const item = items.find((entry) => entry.id === id);
+    if (!item || item.saving) return;
+    if (!item.ticker.trim() && !item.name.trim()) return;
+    const saved = { ...item, saved: true, saving: true };
+    setItems((current) => current.map((entry) => (entry.id === id ? saved : entry)));
+    try {
+      await upsertCard(kind, saved);
+      setItems((current) =>
+        current.map((entry) => (entry.id === id ? { ...entry, saving: false } : entry)),
+      );
+    } catch {
+      setItems((current) =>
+        current.map((entry) =>
+          entry.id === id ? { ...item, saved: false, saving: false } : entry,
+        ),
+      );
+    }
   }
 
   function updateItem(id: string, patch: Partial<ListedStock>) {
@@ -280,7 +309,7 @@ function CardSection({
           onChange={(patch) => updateItem(item.id, patch)}
           onConfirm={() => confirmItem(item.id)}
           onOpenStock={() => {
-            if (!item.saved) return;
+            if (!item.saved || item.saving) return;
             onOpenItem(item);
           }}
           onSwipe={onSwipe}
@@ -318,7 +347,7 @@ function StockCard({
   const { colors: c } = useTheme();
   const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
     open,
-    enabled: !locked,
+    enabled: !locked && !stock.saving,
     width: ACTION,
     onOpen,
     onClose,
@@ -369,6 +398,12 @@ function StockCard({
             <Text style={[styles.nameInput, { color: c.ink }]} numberOfLines={1}>
               {stock.name}
             </Text>
+            {stock.saving ? (
+              <View style={styles.savingRow}>
+                <ActivityIndicator size="small" color={c.muted} />
+                <Text style={[styles.savingText, { color: c.muted }]}>Loading</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         ) : (
           <View style={styles.copy}>
@@ -504,6 +539,8 @@ const styles = StyleSheet.create({
   logoMark: { color: "#ffffff", fontSize: 20, fontWeight: "700" },
   logoHint: { color: MUTED, fontSize: 16 },
   copy: { flex: 1, minWidth: 0 },
+  savingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  savingText: { fontSize: 12 },
   tickerInput: { color: MUTED, fontSize: 11, padding: 0 },
   nameInput: { color: INK, fontSize: 14, fontWeight: "600", padding: 0, marginTop: 1 },
   confirmCard: {

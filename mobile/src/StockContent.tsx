@@ -16,7 +16,6 @@ import Svg, {
   Line,
   LinearGradient,
   Path,
-  Rect,
   Stop,
   Text as SvgText,
 } from "react-native-svg";
@@ -38,8 +37,12 @@ import {
 import { loadStockHistory, saveStockHistory } from "./db";
 import type { ListedStock } from "./stockList";
 import { ChartAxis } from "./ChartAxis";
+import { ChartPill } from "./ChartPill";
 import { imageSource } from "./imageSource";
+import { MoneyAmount } from "./MoneyAmount";
 import { PageLoading } from "./PageLoading";
+import { ScreenBack } from "./ScreenBack";
+import { svgUiFont } from "./svgFont";
 import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
@@ -132,6 +135,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       ref={scrollRef}
       style={[styles.screen, { backgroundColor: c.bg }]}
@@ -141,9 +145,14 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
       keyboardDismissMode="interactive"
     >
       <View style={styles.headerRow}>
-        <View style={[styles.logo, stock?.color ? { backgroundColor: stock.color } : null]}>
+        <View style={[styles.logo, stock?.color ? { backgroundColor: stock.color } : null]} pointerEvents="none">
           {imageSource(stock?.image) ? (
-            <Image source={imageSource(stock?.image)} style={styles.logoImage} fadeDuration={0} />
+            <Image
+              source={imageSource(stock?.image)}
+              style={styles.logoImage}
+              fadeDuration={0}
+              pointerEvents="none"
+            />
           ) : (
             <Text style={styles.logoMark}>
               {stock?.letter ?? stock?.ticker?.trim()?.[0] ?? "V"}
@@ -161,10 +170,12 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         </View>
       </View>
 
-      <Text style={[styles.price, { color: c.ink }]}>
-        <Text style={styles.euro}>€</Text>
-        {shownPrice.toFixed(2)}
-      </Text>
+      <MoneyAmount
+        value={shownPrice}
+        color={c.ink}
+        style={styles.price}
+        euroStyle={styles.euro}
+      />
       <Text style={[styles.change, { color: up ? GREEN : RED }]}>
         {up ? "↗" : "↘"} {Math.abs(change.amount).toFixed(2)} ({Math.abs(change.pct).toFixed(2)}%){" "}
         {rangePeriodLabel(range)}
@@ -232,6 +243,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
         />
       </View>
     </ScrollView>
+    <ScreenBack />
+    </View>
   );
 }
 
@@ -384,8 +397,8 @@ function PriceChart({
           strokeWidth="1"
           strokeDasharray="4 4"
         />
-        <Pill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
-        <Pill x={width - 50} y={averageY - 10} label={average.toFixed(2)} fill="#4B5563" />
+        <ChartPill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
+        <ChartPill x={width - 50} y={averageY - 10} label={average.toFixed(2)} fill="#4B5563" />
         {hoverPoint ? (
           <>
             <Line
@@ -402,6 +415,8 @@ function PriceChart({
               y={12}
               fill={c.ink}
               fontSize="10"
+              fontFamily={svgUiFont}
+              fontStyle="normal"
               textAnchor="middle"
             >
               {formatChartDate(hoverPoint.date)}
@@ -411,34 +426,6 @@ function PriceChart({
       </Svg>
       <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
     </View>
-  );
-}
-
-function Pill({
-  x,
-  y,
-  label,
-  fill,
-}: {
-  x: number;
-  y: number;
-  label: string;
-  fill: string;
-}) {
-  return (
-    <>
-      <Rect x={x} y={y} width={50} height={20} rx={10} fill={fill} />
-      <SvgText
-        x={x + 25}
-        y={y + 14}
-        fill="#ffffff"
-        fontSize="10"
-        fontWeight="600"
-        textAnchor="middle"
-      >
-        {label}
-      </SvgText>
-    </>
   );
 }
 
@@ -453,6 +440,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#C8102E",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   logoMark: { color: "#ffffff", fontSize: 26, fontWeight: "700" },
   logoImage: { width: 44, height: 44, borderRadius: 10 },

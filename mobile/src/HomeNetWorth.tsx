@@ -25,7 +25,9 @@ import {
 } from "./assetData";
 import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
 import { ChartAxis } from "./ChartAxis";
+import { ChartPill } from "./ChartPill";
 import { imageSource } from "./imageSource";
+import { svgUiFont } from "./svgFont";
 import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
@@ -258,6 +260,7 @@ function smoothLine(points: { x: number; y: number }[]) {
 
 function NetChart({
   prices,
+  current,
   hover,
   onHover,
   onScrubbing,
@@ -340,6 +343,24 @@ function NetChart({
           />
         ) : null}
         {last ? <Circle cx={last.x} cy={last.y} r={3.5} fill={BLUE} /> : null}
+        {prices.length > 0 ? (
+          <>
+            <Line
+              x1={left}
+              x2={width - 25}
+              y1={yFor(current)}
+              y2={yFor(current)}
+              stroke={BLUE}
+              strokeWidth="1"
+            />
+            <ChartPill
+              x={width - 50}
+              y={yFor(current) - 10}
+              label={current.toFixed(2)}
+              fill={BLUE}
+            />
+          </>
+        ) : null}
         {hoverPoint ? (
           <>
             <Line
@@ -356,6 +377,8 @@ function NetChart({
               y={12}
               fill={c.ink}
               fontSize="10"
+              fontFamily={svgUiFont}
+              fontStyle="normal"
               textAnchor="middle"
             >
               {formatChartDate(hoverPoint.date)}
@@ -395,6 +418,7 @@ function NetPie({
     const start = angle;
     const end = angle + sweep;
     angle = end;
+    const mid = start + sweep / 2;
     const pct = total === 0 ? 0 : (slice.value / total) * 100;
     return {
       ...slice,
@@ -404,6 +428,8 @@ function NetPie({
       start,
       end,
       pct,
+      labelX: cx + Math.cos(mid) * radius * 0.55,
+      labelY: cy + Math.sin(mid) * radius * 0.55,
     };
   });
 
@@ -443,6 +469,23 @@ function NetPie({
               ),
             )
           )}
+          {paths
+            .filter((slice) => slice.pct >= 8)
+            .map((slice) => (
+              <SvgText
+                key={`p-${slice.key}`}
+                x={slice.full ? cx : slice.labelX}
+                y={(slice.full ? cy : slice.labelY) + 4}
+                fill="#ffffff"
+                fontSize="13"
+                fontWeight="700"
+                fontFamily={svgUiFont}
+                fontStyle="normal"
+                textAnchor="middle"
+              >
+                {`${Math.round(slice.pct)}%`}
+              </SvgText>
+            ))}
         </Svg>
       </View>
     </View>
@@ -554,6 +597,11 @@ const styles = StyleSheet.create({
   pieHintCash: { backgroundColor: "#BFDBFE" },
   pieHintTrading: { backgroundColor: "#BBF7D0" },
   pieHintStocks: { backgroundColor: "#E5E7EB" },
-  pieHintChipText: { fontSize: 13, fontWeight: "600" },
+  pieHintChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontStyle: "normal",
+    fontFamily: "System",
+  },
   pieHintAmount: { fontSize: 20, fontWeight: "500", marginTop: 4 },
 });
