@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import type { TradeRow } from "./models";
+import { formatCompact } from "./assetData";
 import { useTheme } from "./theme";
 import { modalCenter } from "./modalCenter";
 import { useLockBackGesture } from "./useLockBackGesture";
@@ -54,8 +55,8 @@ function netLabel(positive: string, negative: string) {
   const empty = positive.trim() === "" && negative.trim() === "";
   if (empty) return "—";
   const net = toNumber(positive) - toNumber(negative);
-  if (net < 0) return `−${Math.abs(net)}`;
-  return String(net);
+  if (net < 0) return `−${formatCompact(Math.abs(net))}`;
+  return formatCompact(net);
 }
 
 function profitLabel(entry: TradeRow) {
@@ -232,7 +233,7 @@ export function TradingHistory({
                       <TradeHistoryRow
                         key={entry.id}
                         entry={entry}
-                        end={endings[entry.id]?.toFixed(2) ?? "0.00"}
+                        end={endings[entry.id] != null ? formatCompact(endings[entry.id]) : "0.00"}
                         last={index === rows.length - 1}
                         locked={isStart(entry)}
                         enabled={swipeOn}

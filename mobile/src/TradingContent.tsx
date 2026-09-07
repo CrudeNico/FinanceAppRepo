@@ -26,6 +26,7 @@ import {
   chartScale,
   filterSeries,
   formatChartDate,
+  formatCompact,
   formatEuro,
   rangePeriodLabel,
   seriesChange,
@@ -221,7 +222,7 @@ export function TradingContent({ stock }: { stock?: ListedStock }) {
         </Text>
       ) : (
         <Text style={[styles.change, { color: up ? GREEN : RED }]}>
-          {up ? "↗" : "↘"} {Math.abs(change.amount).toFixed(2)} ({Math.abs(change.pct).toFixed(2)}%){" "}
+          {up ? "↗" : "↘"} {formatCompact(Math.abs(change.amount))} ({Math.abs(change.pct).toFixed(2)}%){" "}
           {rangePeriodLabel(range)}
         </Text>
       )}
@@ -441,7 +442,7 @@ function PriceChart({
           stroke={BLUE}
           strokeWidth="1"
         />
-        <ChartPill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
+        <ChartPill x={width - 50} y={currentY - 10} label={formatCompact(current)} fill={BLUE} />
         {hoverPoint ? (
           <>
             <Line

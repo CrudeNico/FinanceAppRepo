@@ -27,6 +27,7 @@ import {
   filterByRange,
   filterSeries,
   formatChartDate,
+  formatCompact,
   formatEuro,
   type PricePoint,
   type RangeKey,
@@ -910,7 +911,7 @@ function PriceChart({
           stroke={BLUE}
           strokeWidth="1"
         />
-        <ChartPill x={width - 50} y={currentY - 10} label={current.toFixed(2)} fill={BLUE} />
+        <ChartPill x={width - 50} y={currentY - 10} label={formatCompact(current)} fill={BLUE} />
         {hoverPoint ? (
           <>
             <Line

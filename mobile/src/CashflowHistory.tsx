@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { formatDayMonth, todayIso, yearOf } from "./assetData";
+import { compactAmountText, formatDayMonth, todayIso, yearOf } from "./assetData";
 import type { CategoryGroup } from "./cashflowCategories";
 import { CategoryManager, CategoryPicker, TagIcon } from "./CashflowCategorySheet";
 import { loadCategoryGroups, saveCategoryGroups } from "./db";
@@ -423,6 +423,10 @@ function FlowRow({
           ref={amountRef}
           value={entry.amount}
           onChangeText={onAmount}
+          onBlur={() => {
+            const next = compactAmountText(entry.amount);
+            if (next !== entry.amount) onAmount(next);
+          }}
           placeholder="—"
           placeholderTextColor={c.muted}
           keyboardType="decimal-pad"

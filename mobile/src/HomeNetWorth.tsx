@@ -15,6 +15,7 @@ import {
   chartScale,
   filterSeries,
   formatChartDate,
+  formatCompact,
   formatEuro,
   mergeValueSeries,
   stockStats,
@@ -356,7 +357,7 @@ function NetChart({
             <ChartPill
               x={width - 50}
               y={yFor(current) - 10}
-              label={current.toFixed(2)}
+              label={formatCompact(current)}
               fill={BLUE}
             />
           </>

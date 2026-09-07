@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
+  compactAmountText,
   formatDayMonth,
   todayIso,
   yearOf,
@@ -285,7 +286,11 @@ const Field = forwardRef<
     <TextInput
       ref={ref}
       value={value}
-      onChangeText={onChange}
+          onChangeText={onChange}
+          onBlur={() => {
+            const next = compactAmountText(value);
+            if (next !== value) onChange(next);
+          }}
       placeholder="—"
       placeholderTextColor={c.muted}
       keyboardType="decimal-pad"

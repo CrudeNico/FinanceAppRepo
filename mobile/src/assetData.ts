@@ -260,12 +260,27 @@ export function rangePeriodLabel(range: RangeKey) {
   }
 }
 
-export function formatEuro(value: number, digits = 2) {
+export function formatCompact(value: number) {
+  const n = Number.isFinite(value) ? value : 0;
+  if (Math.abs(n) >= 1000) return String(Math.round(n));
+  return n.toFixed(2);
+}
+
+export function compactAmountText(raw: string) {
+  const trimmed = raw.trim().replace(",", ".");
+  if (trimmed === "") return raw;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || Math.abs(n) < 1000) return raw;
+  return String(Math.round(n));
+}
+
+export function formatEuro(value: number, digits?: number) {
+  const frac = digits ?? (Math.abs(value) >= 1000 ? 0 : 2);
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
+    minimumFractionDigits: frac,
+    maximumFractionDigits: frac,
   }).format(value);
 }
 

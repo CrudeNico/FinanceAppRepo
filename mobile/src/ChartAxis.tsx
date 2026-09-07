@@ -1,4 +1,5 @@
 import { Platform, StyleSheet, Text } from "react-native";
+import { formatCompact } from "./assetData";
 
 export function ChartAxis({
   ticks,
@@ -15,7 +16,7 @@ export function ChartAxis({
       pointerEvents="none"
       style={[styles.label, { top: yFor(tick) - 7, color }]}
     >
-      {tick.toFixed(2)}
+      {formatCompact(tick)}
     </Text>
   ));
 }
