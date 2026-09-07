@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { ScreenBack } from "./ScreenBack";
 import * as ImagePicker from "expo-image-picker";
 import { persistLogo } from "./db";
+import { imageSource } from "./imageSource";
 import { getActiveProfile } from "./profiles";
 import { useSession } from "./SessionContext";
 import { useTheme } from "./theme";
@@ -34,8 +35,8 @@ export function SettingsScreen({
       <Text style={[styles.title, { color: c.ink }]}>Settings</Text>
 
       <Pressable onPress={pickImage} style={styles.photoWrap}>
-        {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.photo} />
+        {imageSource(avatar) ? (
+          <Image source={imageSource(avatar)} style={styles.photo} />
         ) : (
           <View style={[styles.photoEmpty, { borderColor: c.line, backgroundColor: c.lift }]} />
         )}

@@ -37,6 +37,8 @@ import { loadCashflowEntries, loadCategoryGroups, saveCashflowEntries } from "./
 import type { CashflowEntry } from "./models";
 import type { ListedStock } from "./stockList";
 import { ChartAxis } from "./ChartAxis";
+import { imageSource } from "./imageSource";
+import { PageLoading } from "./PageLoading";
 import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
@@ -59,10 +61,8 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
   const [view, setView] = useState<"graph" | "pie">("graph");
   const [pieFocus, setPieFocus] = useState<"split" | "total">("split");
   const [dataReady, setDataReady] = useState(false);
-  const [logoReady, setLogoReady] = useState(!stock?.image);
   const [entries, setEntries] = useState<CashflowEntry[]>([]);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
-  const show = dataReady && logoReady;
   const stats = useMemo(() => cashflowStats(entries), [entries]);
   const prices = useMemo(() => filterSeries(stats.prices, range), [stats.prices, range]);
   const pieEntries = useMemo(() => {
@@ -158,12 +158,16 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
     };
   }, []);
 
+  if (!dataReady) {
+    return <PageLoading />;
+  }
+
   return (
     <ScrollView
       ref={scrollRef}
-      style={[styles.screen, { backgroundColor: c.bg, opacity: show ? 1 : 0 }]}
+      style={[styles.screen, { backgroundColor: c.bg }]}
       contentContainerStyle={[styles.content, { paddingBottom: 24 + keyboardHeight }]}
-      scrollEnabled={show && !scrubbing}
+      scrollEnabled={!scrubbing}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
     >
@@ -174,13 +178,11 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
             stock?.image ? styles.logoPlain : stock?.color ? { backgroundColor: stock.color } : null,
           ]}
         >
-          {stock?.image ? (
+          {imageSource(stock?.image) ? (
             <Image
-              source={{ uri: stock.image }}
+              source={imageSource(stock?.image)}
               style={styles.logoImage}
               fadeDuration={0}
-              onLoad={() => setLogoReady(true)}
-              onError={() => setLogoReady(true)}
             />
           ) : (
             <Text style={styles.logoMark}>
@@ -953,7 +955,7 @@ function Pill({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 72, paddingBottom: 40 },
+  content: { paddingHorizontal: 20, paddingTop: 88, paddingBottom: 40 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   logo: {
     width: 44,

@@ -43,6 +43,7 @@ export function HistoryCard({
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
+  const [swipeOn, setSwipeOn] = useState(true);
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.date)));
@@ -62,6 +63,8 @@ export function HistoryCard({
     onChange([{ id, date: todayIso(), amount: "", price: "", fx: "" }, ...entries]);
     setOpenYears((current) => (current.includes(latestYear) ? current : [latestYear, ...current]));
     setOpenSwipe(null);
+    setSwipeOn(false);
+    setTimeout(() => setSwipeOn(true), 400);
     onAdded?.();
   }
 
@@ -122,6 +125,7 @@ export function HistoryCard({
                         entry={entry}
                         last={index === rows.length - 1}
                         open={openSwipe === entry.id}
+                        enabled={swipeOn}
                         onOpen={() => setOpenSwipe(entry.id)}
                         onClose={() => setOpenSwipe((current) => (current === entry.id ? null : current))}
                         onDelete={() => remove(entry.id)}
@@ -168,6 +172,7 @@ function HistoryRow({
   entry,
   last,
   open,
+  enabled,
   onOpen,
   onClose,
   onDelete,
@@ -178,6 +183,7 @@ function HistoryRow({
   entry: HistoryEntry;
   last: boolean;
   open: boolean;
+  enabled: boolean;
   onOpen: () => void;
   onClose: () => void;
   onDelete: () => void;
@@ -193,6 +199,7 @@ function HistoryRow({
   const back = useLockBackGesture();
   const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
     open,
+    enabled,
     width: ACTION,
     onOpen,
     onClose,
@@ -218,8 +225,17 @@ function HistoryRow({
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
+      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon color="#ffffff" />
+        </Pressable>
+      </View>
       <Animated.View
-        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }, swipeStyle]}
+        style={[
+          styles.tableRow,
+          { backgroundColor: c.card, transform: [{ translateX: pan }] },
+          swipeStyle,
+        ]}
         onLayout={(event) => {
           rowWidth.current = event.nativeEvent.layout.width;
         }}
@@ -252,11 +268,6 @@ function HistoryRow({
           {...handlers}
         />
       </Animated.View>
-      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon color="#ffffff" />
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -449,7 +460,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
+    zIndex: 0,
   },
   deleteBtn: {
     width: ACTION,
@@ -462,6 +473,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#ffffff",
     minHeight: 36,
+    zIndex: 1,
   },
   colLine: {
     borderLeftWidth: StyleSheet.hairlineWidth,

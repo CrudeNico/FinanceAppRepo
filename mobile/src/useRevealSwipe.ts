@@ -94,7 +94,7 @@ export function useRevealSwipe({
   useEffect(() => {
     if (!open) {
       offset.current = 0;
-      Animated.timing(pan, { toValue: 0, duration: 80, useNativeDriver: true }).start();
+      pan.setValue(0);
     } else {
       offset.current = widthRef.current;
       pan.setValue(widthRef.current);

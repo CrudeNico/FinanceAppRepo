@@ -38,6 +38,8 @@ import {
 import { loadStockHistory, saveStockHistory } from "./db";
 import type { ListedStock } from "./stockList";
 import { ChartAxis } from "./ChartAxis";
+import { imageSource } from "./imageSource";
+import { PageLoading } from "./PageLoading";
 import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
@@ -126,7 +128,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   }, []);
 
   if (!ready) {
-    return <View style={[styles.screen, { backgroundColor: c.bg }]} />;
+    return <PageLoading />;
   }
 
   return (
@@ -140,8 +142,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
     >
       <View style={styles.headerRow}>
         <View style={[styles.logo, stock?.color ? { backgroundColor: stock.color } : null]}>
-          {stock?.image ? (
-            <Image source={{ uri: stock.image }} style={styles.logoImage} fadeDuration={0} />
+          {imageSource(stock?.image) ? (
+            <Image source={imageSource(stock?.image)} style={styles.logoImage} fadeDuration={0} />
           ) : (
             <Text style={styles.logoMark}>
               {stock?.letter ?? stock?.ticker?.trim()?.[0] ?? "V"}
@@ -442,7 +444,7 @@ function Pill({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 72, paddingBottom: 40 },
+  content: { paddingHorizontal: 20, paddingTop: 88, paddingBottom: 40 },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   logo: {
     width: 44,

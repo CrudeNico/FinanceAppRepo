@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { confirmAction } from "./confirmAction";
+import { imageSource } from "./imageSource";
 import { useRevealSwipe } from "./useRevealSwipe";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
@@ -343,8 +344,8 @@ function StockCard({
         {...(!locked && !saved ? handlers : {})}
       >
         <Pressable onPress={onPickImage} style={styles.logo}>
-          {stock.image ? (
-            <Image source={{ uri: stock.image }} style={styles.logoImage} />
+          {imageSource(stock.image) ? (
+            <Image source={imageSource(stock.image)} style={styles.logoImage} />
           ) : stock.color ? (
             <View style={[styles.logoFill, { backgroundColor: stock.color }]}>
               <Text style={styles.logoMark}>{letter}</Text>
@@ -460,7 +461,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "flex-start",
     justifyContent: "center",
-    zIndex: 2,
+    zIndex: 0,
   },
   deleteBtn: {
     width: ACTION,
@@ -476,6 +477,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    zIndex: 1,
   },
   logo: {
     width: 36,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { loadHistory, saveHistory } from "@/lib/historyStore";
 
 type HistoryEntry = {
   id: string;
@@ -30,10 +31,25 @@ function formatDayMonth(iso: string) {
 
 export function HistoryCard() {
   const [entries, setEntries] = useState<HistoryEntry[]>(INITIAL_HISTORY);
+  const [ready, setReady] = useState(false);
   const latestYear = Math.max(yearOf(TODAY), ...entries.map((entry) => yearOf(entry.date)));
   const [openYears, setOpenYears] = useState<number[]>([latestYear]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadHistory()
+      .then((rows) => {
+        if (rows.length > 0) setEntries(rows);
+        setReady(true);
+      })
+      .catch(() => setReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveHistory(entries).catch(() => undefined);
+  }, [entries, ready]);
 
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => yearOf(entry.date)));

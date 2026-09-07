@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { Platform } from "react-native";
 import {
   collection,
   deleteDoc,
@@ -351,6 +352,17 @@ export async function setSetting(key: string, value: string) {
 }
 
 export async function persistLogo(id: string, uri: string) {
+  if (uri.startsWith("data:")) return uri;
+  if (Platform.OS === "web" || uri.startsWith("blob:")) {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const dataUrl = await blobToDataUrl(blob);
+      if (dataUrl) return dataUrl;
+    } catch {
+      return uri.startsWith("blob:") ? "" : uri;
+    }
+  }
   try {
     const folder = new Directory(Paths.document, "logos");
     if (!folder.exists) folder.create();
@@ -360,6 +372,15 @@ export async function persistLogo(id: string, uri: string) {
     await new File(uri).copy(dest);
     return dest.uri;
   } catch {
-    return uri;
+    return uri.startsWith("blob:") ? "" : uri;
   }
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }

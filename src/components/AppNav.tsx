@@ -10,7 +10,7 @@ export function AppNav() {
   const start = useRef(0);
 
   return (
-    <div className="relative min-h-full overflow-hidden">
+    <div className="relative min-h-dvh overflow-hidden bg-[#E6E6E6]">
       <HomePage onOpenStock={() => setPage("stock")} />
       {page === "stock" ? (
         <div

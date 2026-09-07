@@ -103,7 +103,7 @@ export function CategoryPicker({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={[modalCenter.bg, { backgroundColor: c.overlay }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: c.modal }]}>
+        <View style={[modalCenter.sheet, styles.sheet, { backgroundColor: c.modal }]}>
           <Text style={[styles.title, { color: c.ink }]}>Category</Text>
           <View ref={scrollBoxRef} collapsable={false}>
           <ScrollView
@@ -316,12 +316,11 @@ export function CategoryManager({
         style={[
           modalCenter.bg,
           { backgroundColor: c.overlay },
-          keyboardH > 0 && { justifyContent: "flex-end", paddingBottom: 12 },
-          keyboardH > 0 && { marginBottom: keyboardH },
+          keyboardH > 0 ? { paddingBottom: Math.max(keyboardH - 24, 12) } : null,
         ]}
       >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.sheet, { backgroundColor: c.modal }]}>
+        <View style={[modalCenter.sheet, styles.sheet, { backgroundColor: c.modal }]}>
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: c.ink }]}>Categories</Text>
             <Pressable onPress={addGroup} hitSlop={8}>
@@ -547,9 +546,9 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   sheet: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 14,
+    width: 300,
+    maxWidth: "100%",
+    zIndex: 2,
   },
   titleRow: {
     flexDirection: "row",

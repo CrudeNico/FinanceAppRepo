@@ -15,6 +15,7 @@ import {
   type UserProfile,
 } from "./profiles";
 import { dark as darkColors, light as lightColors } from "./theme";
+import { imageSource } from "./imageSource";
 
 export function ProfilesScreen({
   onEnter,
@@ -86,8 +87,8 @@ export function ProfilesScreen({
               }}
               style={styles.avatarWrap}
             >
-              {profile.avatar ? (
-                <Image source={{ uri: profile.avatar }} style={styles.avatar} />
+              {imageSource(profile.avatar) ? (
+                <Image source={imageSource(profile.avatar)} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatarEmpty, { backgroundColor: c.lift }]}>
                   <Text style={[styles.initial, { color: c.ink }]}>{profile.name.trim()[0] || "P"}</Text>

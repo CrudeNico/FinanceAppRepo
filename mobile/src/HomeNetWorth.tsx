@@ -25,6 +25,7 @@ import {
 } from "./assetData";
 import { listCards, loadCashflowEntries, loadStockHistory, loadTradingMonths } from "./db";
 import { ChartAxis } from "./ChartAxis";
+import { imageSource } from "./imageSource";
 import { useTheme } from "./theme";
 import { useDragTrack } from "./useRevealSwipe";
 
@@ -89,8 +90,8 @@ export function HomeNetWorth({
     <View style={styles.wrap}>
       <View style={styles.head}>
         <Pressable onPress={onProfile}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatarImage} />
+          {imageSource(avatar) ? (
+            <Image source={imageSource(avatar)} style={styles.avatarImage} />
           ) : (
             <View style={[styles.avatar, { backgroundColor: c.lift, borderColor: c.line }]} />
           )}

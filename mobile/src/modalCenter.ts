@@ -15,14 +15,17 @@ export const modalCenter = StyleSheet.create({
           bottom: 0,
           width: "100%",
           height: "100%",
-          minHeight: "100vh",
+          minHeight: "100dvh",
+          zIndex: 40,
         } as object)
       : null),
   },
   sheet: {
-    width: 280,
+    width: 300,
     maxWidth: "100%",
     borderRadius: 16,
     padding: 14,
+    zIndex: 41,
+    alignSelf: "center",
   },
 });

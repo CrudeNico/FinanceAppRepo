@@ -82,6 +82,7 @@ export function CashflowHistory({
   const [calendarFor, setCalendarFor] = useState<string | null>(null);
   const [itemFor, setItemFor] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [swipeOn, setSwipeOn] = useState(true);
   const [groups, setGroups] = useState<CategoryGroup[]>([]);
   const [startAmount, setStartAmount] = useState("");
   const back = useLockBackGesture();
@@ -126,6 +127,8 @@ export function CashflowHistory({
     setOpenYears((current) => (current.includes(year) ? current : [year, ...current]));
     setOpenMonths((current) => (current.includes(month) ? current : [month, ...current]));
     setOpenSwipe(null);
+    setSwipeOn(false);
+    setTimeout(() => setSwipeOn(true), 400);
     onAdded?.();
   }
 
@@ -234,6 +237,7 @@ export function CashflowHistory({
                                   entry={entry}
                                   last={index === rows.length - 1}
                                   locked={isStart(entry)}
+                                  enabled={swipeOn}
                                   open={openSwipe === entry.id}
                                   onOpen={() => setOpenSwipe(entry.id)}
                                   onClose={() =>
@@ -339,6 +343,7 @@ function FlowRow({
   entry,
   last,
   locked,
+  enabled,
   open,
   onOpen,
   onClose,
@@ -351,6 +356,7 @@ function FlowRow({
   entry: CashflowEntry;
   last: boolean;
   locked?: boolean;
+  enabled: boolean;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -365,7 +371,7 @@ function FlowRow({
   const amountRef = useRef<TextInput>(null);
   const { pan, handlers, style: swipeStyle, nodeRef } = useRevealSwipe({
     open,
-    enabled: !locked,
+    enabled: enabled && !locked,
     width: ACTION,
     onOpen,
     onClose,
@@ -388,8 +394,19 @@ function FlowRow({
 
   return (
     <View style={[styles.rowWrap, !last && styles.rowLine, !last && { borderBottomColor: c.line }]}>
+      {locked ? null : (
+      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
+        <Pressable onPress={onDelete} style={styles.deleteBtn}>
+          <TrashIcon color="#ffffff" />
+        </Pressable>
+      </View>
+      )}
       <Animated.View
-        style={[styles.tableRow, { backgroundColor: c.card, transform: [{ translateX: pan }] }, swipeStyle]}
+        style={[
+          styles.tableRow,
+          { backgroundColor: c.card, transform: [{ translateX: pan }] },
+          swipeStyle,
+        ]}
       >
         <Pressable onPress={open ? onClose : onDate} style={styles.dateCol}>
           <Text style={[styles.dateText, { color: c.ink }]}>{formatDayMonth(entry.date)}</Text>
@@ -428,13 +445,6 @@ function FlowRow({
           />
         )}
       </Animated.View>
-      {locked ? null : (
-      <View style={styles.deleteLane} pointerEvents={open ? "auto" : "none"}>
-        <Pressable onPress={onDelete} style={styles.deleteBtn}>
-          <TrashIcon />
-        </Pressable>
-      </View>
-      )}
     </View>
   );
 }
@@ -524,12 +534,12 @@ function ChevronUp() {
   );
 }
 
-function TrashIcon() {
+function TrashIcon({ color = "#ffffff" }: { color?: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
       <Path
         d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
-        stroke="#ffffff"
+        stroke={color}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -607,7 +617,7 @@ const styles = StyleSheet.create({
     backgroundColor: RED,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
+    zIndex: 0,
   },
   deleteBtn: {
     width: ACTION,
@@ -620,6 +630,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: 36,
     backgroundColor: "#ffffff",
+    zIndex: 1,
   },
   colLine: {
     borderLeftWidth: StyleSheet.hairlineWidth,

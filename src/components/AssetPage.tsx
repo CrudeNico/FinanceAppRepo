@@ -87,7 +87,7 @@ export function AssetPage({ onBack }: { onBack?: () => void }) {
   const shownPrice = hover?.value ?? ASSET.price;
 
   return (
-    <main className="relative mx-auto min-h-full max-w-md bg-white px-5 pb-12 pt-20">
+    <main className="relative mx-auto min-h-dvh max-w-md bg-white px-5 pb-12 pt-20">
       {onBack ? (
         <div
           className="absolute inset-y-0 left-0 z-20 w-7"
