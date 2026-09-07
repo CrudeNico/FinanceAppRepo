@@ -59,21 +59,24 @@ type ThemeContextValue = {
   colors: Colors;
   setMode: (mode: ThemeMode) => void;
   avatar: string | null;
-  setAvatar: (uri: string | null) => void;
+  setAvatar: (uri: string | null) => void | Promise<void>;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>("light");
-  const [avatar, setAvatarState] = useState<string | null>(null);
+  const [avatar, setAvatarState] = useState<string | null>(() => getActiveProfile()?.avatar ?? null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    const fromProfile = getActiveProfile()?.avatar ?? null;
+    if (fromProfile) setAvatarState(fromProfile);
     Promise.all([getSetting("theme"), getSetting("avatar")])
       .then(([theme, nextAvatar]) => {
         if (theme === "dark" || theme === "light") setModeState(theme);
         if (nextAvatar) setAvatarState(nextAvatar);
+        else if (fromProfile) setAvatarState(fromProfile);
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
@@ -92,9 +95,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       avatar,
       setAvatar: (uri) => {
         setAvatarState(uri);
-        setSetting("avatar", uri ?? "").catch(() => undefined);
         const profile = getActiveProfile();
-        if (profile) updateProfileAvatar(profile.id, uri).catch(() => undefined);
+        return Promise.all([
+          setSetting("avatar", uri ?? ""),
+          profile ? updateProfileAvatar(profile.id, uri) : Promise.resolve(),
+        ]).then(() => undefined);
       },
     }),
     [avatar, mode],

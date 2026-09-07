@@ -13,10 +13,8 @@ import {
 } from "firebase/firestore";
 import {
   deleteObject,
-  getDownloadURL,
   listAll,
   ref,
-  uploadBytes,
   type StorageReference,
 } from "firebase/storage";
 import { INITIAL_HISTORY } from "./assetData";
@@ -362,12 +360,16 @@ export async function setSetting(key: string, value: string) {
 }
 
 export async function persistLogo(id: string, uri: string, previous?: string | null) {
-  const blob = await readAsBlob(uri);
-  const jpeg = await compressJpeg(blob);
-  const stored = (await uploadLogo(id, jpeg)) || (await dataUrlIfSmall(jpeg)) || (await copyLocal(id, uri));
-  if (previous && previous !== stored) await deleteStoredImage(previous);
-  if (!stored || stored.startsWith("blob:")) return "";
-  return stored;
+  try {
+    const blob = await readAsBlob(uri);
+    const jpeg = await squeezeJpeg(blob);
+    const stored = (await blobToDataUrl(jpeg)) || (await copyLocal(id, uri));
+    if (previous && previous !== stored) await deleteStoredImage(previous);
+    if (!stored || stored.startsWith("blob:")) return "";
+    return stored;
+  } catch {
+    return "";
+  }
 }
 
 export async function deleteStoredImage(uri?: string | null) {
@@ -397,24 +399,78 @@ function isStorageUrl(uri: string) {
   return uri.includes("firebasestorage.googleapis.com") || uri.includes("firebasestorage.app");
 }
 
-async function uploadLogo(id: string, blob: Blob) {
-  if (!activeId) return "";
-  try {
-    const fileRef = ref(getFirebaseStorage(), `profiles/${activeId}/logos/${id}-${Date.now()}.jpg`);
-    await uploadBytes(fileRef, blob, { contentType: "image/jpeg" });
-    return await getDownloadURL(fileRef);
-  } catch {
-    return "";
+async function squeezeJpeg(blob: Blob) {
+  let max = 192;
+  let quality = 0.7;
+  let next = blob;
+  for (let step = 0; step < 4; step += 1) {
+    next = await compressJpeg(next, max, quality);
+    if (next.size <= 180_000) return next;
+    max = Math.max(64, Math.round(max * 0.7));
+    quality = Math.max(0.4, quality - 0.12);
   }
+  return next;
 }
 
-async function dataUrlIfSmall(blob: Blob) {
-  if (blob.size > 700_000) return "";
+async function compressJpeg(blob: Blob, max = 192, quality = 0.7) {
+  if (typeof document === "undefined") return blob;
   try {
-    return await blobToDataUrl(blob);
+    if (typeof createImageBitmap === "function") {
+      const bitmap = await createImageBitmap(blob);
+      const sized = await drawJpeg(bitmap, max, quality);
+      bitmap.close();
+      if (sized) return sized;
+    }
   } catch {
-    return "";
+    /* fall through */
   }
+  return new Promise<Blob>((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      drawJpeg(img, max, quality)
+        .then((next) => {
+          URL.revokeObjectURL(url);
+          resolve(next ?? blob);
+        })
+        .catch(() => {
+          URL.revokeObjectURL(url);
+          resolve(blob);
+        });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(blob);
+    };
+    img.src = url;
+  });
+}
+
+function drawJpeg(
+  source: { width: number; height: number; close?: () => void } | CanvasImageSource,
+  max: number,
+  quality: number,
+) {
+  const width0 = "width" in source ? Number(source.width) : 0;
+  const height0 = "height" in source ? Number(source.height) : 0;
+  let width = width0 || max;
+  let height = height0 || max;
+  if (width > height && width > max) {
+    height = Math.round((height * max) / width);
+    width = max;
+  } else if (height > max) {
+    width = Math.round((width * max) / height);
+    height = max;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, width);
+  canvas.height = Math.max(1, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return Promise.resolve(null);
+  ctx.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((next) => resolve(next), "image/jpeg", quality);
+  });
 }
 
 async function copyLocal(id: string, uri: string) {
@@ -435,44 +491,6 @@ async function copyLocal(id: string, uri: string) {
 async function readAsBlob(uri: string) {
   const response = await fetch(uri);
   return response.blob();
-}
-
-async function compressJpeg(blob: Blob) {
-  if (typeof document === "undefined") return blob;
-  return new Promise<Blob>((resolve) => {
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const max = 256;
-      let width = img.width;
-      let height = img.height;
-      if (width > height && width > max) {
-        height = Math.round((height * max) / width);
-        width = max;
-      } else if (height > max) {
-        width = Math.round((width * max) / height);
-        height = max;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      ctx?.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (next) => {
-          URL.revokeObjectURL(url);
-          resolve(next ?? blob);
-        },
-        "image/jpeg",
-        0.72,
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(blob);
-    };
-    img.src = url;
-  });
 }
 
 function blobToDataUrl(blob: Blob) {

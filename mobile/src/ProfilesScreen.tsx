@@ -116,7 +116,7 @@ export function ProfilesScreen({
             >
               <View style={[styles.avatarClip, { backgroundColor: c.lift }]}>
                 {imageSource(profile.avatar) ? (
-                  <Image source={imageSource(profile.avatar)} style={styles.avatar} />
+                  <Image source={imageSource(profile.avatar)} style={styles.avatar} resizeMode="cover" />
                 ) : (
                   <View style={[styles.avatarEmpty, { backgroundColor: c.lift }]}>
                     <Text style={[styles.initial, { color: c.ink }]}>

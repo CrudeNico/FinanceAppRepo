@@ -93,7 +93,7 @@ export function HomeNetWorth({
       <View style={styles.head}>
         <Pressable onPress={onProfile}>
           {imageSource(avatar) ? (
-            <Image source={imageSource(avatar)} style={styles.avatarImage} />
+            <Image source={imageSource(avatar)} style={styles.avatarImage} resizeMode="cover" />
           ) : (
             <View style={[styles.avatar, { backgroundColor: c.lift, borderColor: c.line }]} />
           )}
