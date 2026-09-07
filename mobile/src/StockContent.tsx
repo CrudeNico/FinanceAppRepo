@@ -136,7 +136,7 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, position: "relative" }}>
     <ScrollView
       ref={scrollRef}
       style={[styles.screen, { backgroundColor: c.bg }]}
