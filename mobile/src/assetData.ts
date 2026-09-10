@@ -110,27 +110,31 @@ export function chartScale(values: number[]) {
 
 export function stockStats(entries: HistoryEntry[]) {
   const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  let invested = 0;
-  let shares = 0;
+  let value = 0;
   let lastPrice = 0;
+  let priceSum = 0;
+  let priceCount = 0;
   const prices: PricePoint[] = [];
+  const amounts: PricePoint[] = [];
   ordered.forEach((entry) => {
-    const amount = toAmount(entry.amount);
-    const price = toAmount(entry.price);
-    if (price > 0) {
+    if (entry.amount.trim() !== "") {
+      value += toAmount(entry.amount);
+      amounts.push({ date: entry.date, value });
+    }
+    if (entry.price.trim() !== "") {
+      const price = toAmount(entry.price);
       lastPrice = price;
+      priceSum += price;
+      priceCount += 1;
       prices.push({ date: entry.date, value: price });
     }
-    if (amount !== 0 && price > 0) {
-      invested += amount;
-      shares += amount / price;
-    }
   });
-  const value = lastPrice * shares;
-  const returnAmount = value - invested;
-  const returnPct = invested === 0 ? 0 : (returnAmount / invested) * 100;
-  const averagePrice = shares === 0 ? 0 : invested / shares;
-  return { invested, shares, lastPrice, value, returnAmount, returnPct, averagePrice, prices };
+  const averagePrice = priceCount === 0 ? 0 : priceSum / priceCount;
+  return { value, lastPrice, averagePrice, prices, amounts };
+}
+
+export function stockValuePoints(entries: HistoryEntry[]) {
+  return stockStats(entries).amounts;
 }
 
 export type AssetKind = "start" | "inc" | "dec";
@@ -170,21 +174,6 @@ export function assetStats(entries: AssetEntry[]) {
 
 export function assetValuePoints(entries: AssetEntry[]) {
   return assetStats(entries).history;
-}
-
-export function stockValuePoints(entries: HistoryEntry[]) {
-  const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  let shares = 0;
-  let lastPrice = 0;
-  const points: PricePoint[] = [];
-  ordered.forEach((entry) => {
-    const amount = toAmount(entry.amount);
-    const price = toAmount(entry.price);
-    if (price > 0) lastPrice = price;
-    if (amount !== 0 && price > 0) shares += amount / price;
-    if (lastPrice > 0) points.push({ date: entry.date, value: lastPrice * shares });
-  });
-  return points;
 }
 
 export function mergeValueSeries(seriesList: PricePoint[][]) {

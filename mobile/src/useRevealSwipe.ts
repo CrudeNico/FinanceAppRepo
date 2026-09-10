@@ -205,29 +205,14 @@ export function useRevealSwipe({
     };
   }, [enabled, host]);
 
-  const nativeStart = useRef({ x: 0, y: 0, locationX: 0 });
   const handlers =
     Platform.OS === "web"
       ? {}
       : {
-          onStartShouldSetResponder: () => false,
-          onMoveShouldSetResponder: (event: { nativeEvent: Record<string, number> }) => {
-            if (!enabled) return false;
-            const next = fromNative({ nativeEvent: event.nativeEvent });
-            const dx = next.pageX - nativeStart.current.x;
-            const dy = next.pageY - nativeStart.current.y;
-            return Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy);
-          },
-          onTouchStart: (event: { nativeEvent: Record<string, number> }) => {
-            const next = fromNative({ nativeEvent: event.nativeEvent });
-            nativeStart.current = {
-              x: next.pageX,
-              y: next.pageY,
-              locationX: Number(event.nativeEvent.locationX ?? 0),
-            };
-          },
+          onStartShouldSetResponder: () => enabled,
+          onMoveShouldSetResponder: () => enabled,
           onResponderGrant: (event: { nativeEvent: Record<string, number> }) =>
-            grant(fromNative({ nativeEvent: event.nativeEvent }), nativeStart.current.locationX),
+            grant(fromNative({ nativeEvent: event.nativeEvent }), Number(event.nativeEvent.locationX ?? 0)),
           onResponderMove: (event: { nativeEvent: Record<string, number> }) =>
             move(fromNative({ nativeEvent: event.nativeEvent })),
           onResponderRelease: (event: { nativeEvent: Record<string, number> }) =>

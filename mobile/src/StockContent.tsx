@@ -27,7 +27,6 @@ import {
   formatChartDate,
   formatCompact,
   formatEuro,
-  formatNumber,
   rangePeriodLabel,
   seriesChange,
   stockStats,
@@ -65,11 +64,14 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   const historyOffset = useRef({ y: 0, height: 0 });
   const revealAfterLayout = useRef(false);
   const [ready, setReady] = useState(false);
+  const [chart, setChart] = useState<"amount" | "price">("amount");
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const stats = useMemo(() => stockStats(entries), [entries]);
-  const prices = useMemo(() => filterSeries(stats.prices, range), [stats.prices, range]);
+  const series = chart === "amount" ? stats.amounts : stats.prices;
+  const prices = useMemo(() => filterSeries(series, range), [series, range]);
   const change = useMemo(() => seriesChange(prices), [prices]);
-  const shownPrice = hover?.value ?? stats.lastPrice;
+  const current = chart === "amount" ? stats.value : stats.lastPrice;
+  const shownPrice = hover?.value ?? current;
   const up = change.amount >= 0;
 
   useEffect(() => {
@@ -184,8 +186,8 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
 
       <PriceChart
         prices={prices}
-        current={stats.lastPrice}
-        average={stats.averagePrice}
+        current={current}
+        average={chart === "price" ? stats.averagePrice : null}
         hover={hover}
         onHover={setHover}
         onScrubbing={setScrubbing}
@@ -208,17 +210,33 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
             </Pressable>
           ))}
         </View>
+        <View style={styles.viewToggle}>
+          <Pressable
+            onPress={() => {
+              setHover(null);
+              setChart("amount");
+            }}
+            hitSlop={8}
+            style={[styles.viewBtn, chart === "amount" && { backgroundColor: c.lift }]}
+          >
+            <ChartIcon />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setHover(null);
+              setChart("price");
+            }}
+            hitSlop={8}
+            style={[styles.viewBtn, chart === "price" && { backgroundColor: c.lift }]}
+          >
+            <LineIcon />
+          </Pressable>
+        </View>
       </View>
 
       <Text style={[styles.section, { color: c.ink }]}>Your investment</Text>
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
         <Row label="VALUE" value={formatEuro(stats.value)} />
-        <Row
-          label="RETURN"
-          value={`${stats.returnAmount >= 0 ? "+" : ""}${formatEuro(stats.returnAmount)} (${stats.returnPct.toFixed(2)}%)`}
-          green={stats.returnAmount >= 0}
-        />
-        <Row label="SHARES" value={formatNumber(stats.shares, 8)} underline />
         <Row label="AVERAGE PRICE" value={formatEuro(stats.averagePrice)} last />
       </View>
 
@@ -252,30 +270,17 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
 function Row({
   label,
   value,
-  green,
-  underline,
   last,
 }: {
   label: string;
   value: string;
-  green?: boolean;
-  underline?: boolean;
   last?: boolean;
 }) {
   const { colors: c } = useTheme();
   return (
     <View style={[styles.row, !last && styles.rowGap]}>
       <Text style={[styles.rowLabel, { color: c.muted }]}>{label}</Text>
-      <Text
-        style={[
-          styles.rowValue,
-          { color: c.ink },
-          green && styles.green,
-          underline && styles.underline,
-        ]}
-      >
-        {value}
-      </Text>
+      <Text style={[styles.rowValue, { color: c.ink }]}>{value}</Text>
     </View>
   );
 }
@@ -290,7 +295,7 @@ function PriceChart({
 }: {
   prices: PricePoint[];
   current: number;
-  average: number;
+  average: number | null;
   hover: PricePoint | null;
   onHover: (point: PricePoint | null) => void;
   onScrubbing: (active: boolean) => void;
@@ -325,7 +330,7 @@ function PriceChart({
       : "";
 
   const currentY = yFor(current);
-  const averageY = yFor(average);
+  const averageY = average == null ? null : yFor(average);
   const hoverPoint = hover
     ? points.find((point) => point.date === hover.date) ?? null
     : null;
@@ -389,17 +394,21 @@ function PriceChart({
           stroke={BLUE}
           strokeWidth="1"
         />
-        <Line
-          x1={left}
-          x2={width - 25}
-          y1={averageY}
-          y2={averageY}
-          stroke="#9CA3AF"
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
+        {averageY == null ? null : (
+          <>
+            <Line
+              x1={left}
+              x2={width - 25}
+              y1={averageY}
+              y2={averageY}
+              stroke="#9CA3AF"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+            />
+            <ChartPill x={width - 50} y={averageY - 10} label={formatCompact(average ?? 0)} fill="#4B5563" />
+          </>
+        )}
         <ChartPill x={width - 50} y={currentY - 10} label={formatCompact(current)} fill={BLUE} />
-        <ChartPill x={width - 50} y={averageY - 10} label={formatCompact(average)} fill="#4B5563" />
         {hoverPoint ? (
           <>
             <Line
@@ -427,6 +436,42 @@ function PriceChart({
       </Svg>
       <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
     </View>
+  );
+}
+
+function ChartIcon() {
+  const { colors: c } = useTheme();
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
+        stroke={c.ink}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function LineIcon() {
+  const { colors: c } = useTheme();
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 16.5 9 10.5l4 4L21 6"
+        stroke={c.ink}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M3 20h18"
+        stroke={c.ink}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </Svg>
   );
 }
 
@@ -460,6 +505,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 8,
   },
+  viewToggle: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewBtn: { padding: 6, borderRadius: 10 },
   ranges: { flexDirection: "row", alignItems: "center", gap: 2 },
   range: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
   rangeOn: { backgroundColor: "#EFEFEF" },
@@ -478,6 +525,4 @@ const styles = StyleSheet.create({
   rowGap: { marginBottom: 8 },
   rowLabel: { color: MUTED, fontSize: 12, fontWeight: "600", letterSpacing: 0.4 },
   rowValue: { color: INK, fontSize: 16, fontWeight: "400" },
-  green: { color: GREEN },
-  underline: { textDecorationLine: "underline" },
 });
