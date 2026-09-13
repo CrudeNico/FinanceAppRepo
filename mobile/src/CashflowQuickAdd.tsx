@@ -51,13 +51,11 @@ export function CashflowQuickAdd({
     loadCategoryGroups().then(setGroups).catch(() => setGroups([]));
   }, [visible]);
 
-  async function commit(
-    nextAmount = amount,
-    nextPick = picked,
-    closeAfter = true,
-  ) {
-    const trimmed = nextAmount.trim();
-    if (!cardId || !nextPick || trimmed === "" || saving) return;
+  const ready = Boolean(cardId && picked && amount.trim() !== "");
+
+  async function commit() {
+    const trimmed = amount.trim();
+    if (!cardId || !picked || trimmed === "" || saving) return;
     if (!Number.isFinite(Number(trimmed.replace(/\s/g, "").replace(",", ".")))) return;
     setSaving(true);
     try {
@@ -66,14 +64,14 @@ export function CashflowQuickAdd({
         {
           id: `c${Date.now()}`,
           date: todayIso(),
-          kind: nextPick.group.kind,
+          kind: picked.group.kind,
           amount: trimmed,
-          label: nextPick.item.name,
+          label: picked.item.name,
         },
         ...entries,
       ]);
       onSaved();
-      if (closeAfter) onClose();
+      onClose();
     } catch {
       setSaving(false);
     }
@@ -86,24 +84,12 @@ export function CashflowQuickAdd({
           style={[modalCenter.bg, { backgroundColor: c.overlay }]}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => {
-              if (amount.trim() && picked) commit();
-              else onClose();
-            }}
-          />
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
             <Text style={[styles.title, { color: c.ink }]}>Entry</Text>
             <TextInput
               value={amount}
               onChangeText={setAmount}
-              onEndEditing={() => {
-                if (picked) commit();
-              }}
-              onSubmitEditing={() => {
-                if (picked) commit();
-              }}
               placeholder="0.00"
               placeholderTextColor={c.muted}
               keyboardType={Platform.OS === "web" ? "default" : "decimal-pad"}
@@ -134,7 +120,20 @@ export function CashflowQuickAdd({
                 <Text style={[styles.categoryText, { color: c.muted }]}>Category</Text>
               )}
             </Pressable>
-            {saving ? <ActivityIndicator style={styles.spin} color={c.muted} /> : null}
+            <Pressable
+              onPress={commit}
+              disabled={!ready || saving}
+              style={[
+                styles.confirm,
+                { backgroundColor: c.ink, opacity: !ready || saving ? 0.4 : 1 },
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator color={c.bg} />
+              ) : (
+                <Text style={[styles.confirmText, { color: c.bg }]}>Confirm</Text>
+              )}
+            </Pressable>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
@@ -143,10 +142,8 @@ export function CashflowQuickAdd({
         groups={groups}
         onClose={() => setPickOpen(false)}
         onPick={(item, group) => {
-          const next = { item, group };
-          setPicked(next);
+          setPicked({ item, group });
           setPickOpen(false);
-          if (amount.trim()) commit(amount, next);
         }}
       />
     </>
@@ -171,8 +168,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     alignItems: "center",
+    marginBottom: 8,
   },
   categoryRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   categoryText: { fontSize: 15 },
-  spin: { marginTop: 10 },
+  confirm: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  confirmText: { fontSize: 15, fontWeight: "600" },
 });
