@@ -69,7 +69,10 @@ export function StockContent({ stock }: { stock?: ListedStock }) {
   const stats = useMemo(() => stockStats(entries), [entries]);
   const series = chart === "amount" ? stats.amounts : stats.prices;
   const prices = useMemo(() => filterSeries(series, range), [series, range]);
-  const change = useMemo(() => seriesChange(prices), [prices]);
+  const change = useMemo(() => {
+    const live = prices[0]?.value === 0 ? prices.slice(1) : prices;
+    return seriesChange(live.length ? live : prices);
+  }, [prices]);
   const current = chart === "amount" ? stats.value : stats.lastPrice;
   const shownPrice = hover?.value ?? current;
   const up = change.amount >= 0;
@@ -332,7 +335,9 @@ function PriceChart({
   const currentY = yFor(current);
   const averageY = average == null ? null : yFor(average);
   const hoverPoint = hover
-    ? points.find((point) => point.date === hover.date) ?? null
+    ? points.find((point) => point.date === hover.date && point.value === hover.value) ??
+      points.find((point) => point.date === hover.date) ??
+      null
     : null;
 
   function pick(locationX: number) {
@@ -363,11 +368,13 @@ function PriceChart({
       onLayout={(event) => setBoxWidth(event.nativeEvent.layout.width)}
       {...drag}
     >
+      <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
       <Svg
         width="100%"
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
+        style={{ zIndex: 2 }}
       >
         <Defs>
           <LinearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
@@ -434,7 +441,6 @@ function PriceChart({
           </>
         ) : null}
       </Svg>
-      <ChartAxis ticks={ticks} yFor={yFor} color={c.muted} />
     </View>
   );
 }

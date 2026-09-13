@@ -5,6 +5,7 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,7 +16,9 @@ import {
   View,
 } from "react-native";
 import { confirmAction } from "./confirmAction";
+import { ColorPalette } from "./categoryPalettes";
 import { forgetImage, imageSource } from "./imageSource";
+import { modalCenter } from "./modalCenter";
 import { useRevealSwipe } from "./useRevealSwipe";
 import * as ImagePicker from "expo-image-picker";
 import Svg, { Path } from "react-native-svg";
@@ -31,6 +34,7 @@ import {
   upsertCard,
   type CardKind,
 } from "./db";
+import { CashflowQuickAdd } from "./CashflowQuickAdd";
 import { HomeNetWorth } from "./HomeNetWorth";
 import type { ListedStock } from "./stockList";
 import { useTheme } from "./theme";
@@ -39,6 +43,21 @@ const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RED = "#DC2626";
 const ACTION = 68;
+const CARD_COLORS = [
+  "#3B82F6",
+  "#16A34A",
+  "#F59E0B",
+  "#DC2626",
+  "#8B5CF6",
+  "#06B6D4",
+  "#EC4899",
+  "#0F766E",
+];
+
+function nextCardColor(used: (string | undefined)[]) {
+  const taken = new Set(used.filter(Boolean));
+  return CARD_COLORS.find((color) => !taken.has(color)) ?? CARD_COLORS[used.length % CARD_COLORS.length];
+}
 
 async function cardValue(kind: CardKind, id: string) {
   if (kind === "trading") return tradingStats(await loadTradingMonths(id)).value;
@@ -55,6 +74,19 @@ async function sectionValue(kind: CardKind) {
   return values.reduce((sum, value) => sum + value, 0);
 }
 
+function rankByValue<T>(
+  rows: T[],
+  valueOf: (row: T) => number,
+  savedOf: (row: T) => boolean = () => true,
+) {
+  return [...rows].sort((a, b) => {
+    const savedA = savedOf(a);
+    const savedB = savedOf(b);
+    if (savedA !== savedB) return savedA ? -1 : 1;
+    return valueOf(b) - valueOf(a);
+  });
+}
+
 async function loadSortedCards(kind: CardKind) {
   const cards = await listCards(kind);
   const ranked = await Promise.all(
@@ -63,11 +95,7 @@ async function loadSortedCards(kind: CardKind) {
       value: card.saved ? await cardValue(kind, card.id) : Number.NEGATIVE_INFINITY,
     })),
   );
-  ranked.sort((a, b) => {
-    if (a.card.saved !== b.card.saved) return a.card.saved ? -1 : 1;
-    return b.value - a.value;
-  });
-  return ranked.map((item) => item.card);
+  return rankByValue(ranked, (item) => item.value).map((item) => item.card);
 }
 
 function mergeCards(rows: ListedStock[], current: ListedStock[]) {
@@ -87,14 +115,27 @@ export function HomeScreen({
   navigation: { navigate: (name: string, params?: object) => void };
 }) {
   const [lockScroll, setLockScroll] = useState(false);
-  const [tradeFirst, setTradeFirst] = useState(true);
+  const [worthTick, setWorthTick] = useState(0);
+  const [rankedKinds, setRankedKinds] = useState<Exclude<CardKind, "cashflow">[]>([
+    "trading",
+    "stock",
+    "asset",
+  ]);
   const { colors: c } = useTheme();
 
   useFocusEffect(
     useCallback(() => {
-      Promise.all([sectionValue("trading"), sectionValue("stock")])
-        .then(([trading, stocks]) => setTradeFirst(trading >= stocks))
-        .catch(() => setTradeFirst(true));
+      const kinds = ["trading", "stock", "asset"] as const;
+      Promise.all(kinds.map((kind) => sectionValue(kind)))
+        .then((values) => {
+          setRankedKinds(
+            kinds
+              .map((kind, index) => ({ kind, value: values[index], index }))
+              .sort((a, b) => b.value - a.value || a.index - b.index)
+              .map((item) => item.kind),
+          );
+        })
+        .catch(() => setRankedKinds(["trading", "stock", "asset"]));
     }, []),
   );
 
@@ -173,6 +214,7 @@ export function HomeScreen({
         scrollEnabled={!lockScroll}
       >
         <HomeNetWorth
+          reloadToken={worthTick}
           onScrubbing={setLockScroll}
           onProfile={() => navigation.navigate("Settings")}
         />
@@ -180,6 +222,7 @@ export function HomeScreen({
           title="Cashflow"
           kind="cashflow"
           locked
+          onQuickSaved={() => setWorthTick((tick) => tick + 1)}
           onOpenItem={(stock) =>
             navigation.navigate("Cashflow", {
               stock: {
@@ -195,23 +238,12 @@ export function HomeScreen({
           }
         />
         <View style={styles.sectionGap} />
-        {tradeFirst ? (
-          <>
-            {trading}
-            <View style={styles.sectionGap} />
-            {stocks}
-            <View style={styles.sectionGap} />
-            {assets}
-          </>
-        ) : (
-          <>
-            {stocks}
-            <View style={styles.sectionGap} />
-            {assets}
-            <View style={styles.sectionGap} />
-            {trading}
-          </>
-        )}
+        {rankedKinds.map((kind, index) => (
+          <View key={kind}>
+            {index > 0 ? <View style={styles.sectionGap} /> : null}
+            {kind === "trading" ? trading : kind === "stock" ? stocks : assets}
+          </View>
+        ))}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -223,26 +255,71 @@ function CardSection({
   locked,
   onOpenItem,
   onSwipe,
+  onQuickSaved,
 }: {
   title: string;
   kind: CardKind;
   locked?: boolean;
   onOpenItem: (stock: ListedStock) => void;
   onSwipe?: (active: boolean) => void;
+  onQuickSaved?: () => void;
 }) {
   const [items, setItems] = useState<ListedStock[]>([]);
   const [openSwipe, setOpenSwipe] = useState<string | null>(null);
+  const [shares, setShares] = useState<{ id: string; value: number; color: string }[]>([]);
+  const [looksFor, setLooksFor] = useState<string | null>(null);
+  const [entryFor, setEntryFor] = useState<string | null>(null);
+
+  async function loadShares(rows: ListedStock[]) {
+    const saved = rows.filter((row) => row.saved);
+    if (saved.length < 2) {
+      setShares([]);
+      return;
+    }
+    const values = await Promise.all(saved.map((row) => cardValue(kind, row.id)));
+    setShares(
+      rankByValue(
+        saved.map((row, index) => ({
+          id: row.id,
+          value: values[index] ?? 0,
+          color: row.color || CARD_COLORS[index % CARD_COLORS.length],
+        })),
+        (slice) => slice.value,
+      ),
+    );
+  }
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
       loadSortedCards(kind)
-        .then((rows) => {
+        .then(async (rows) => {
           if (cancelled) return;
           setItems((current) => mergeCards(rows, current));
+          const saved = rows.filter((row) => row.saved);
+          if (saved.length < 2) {
+            setShares([]);
+            return;
+          }
+          const values = await Promise.all(saved.map((row) => cardValue(kind, row.id)));
+          if (!cancelled) {
+            setShares(
+              rankByValue(
+                saved.map((row, index) => ({
+                  id: row.id,
+                  value: values[index] ?? 0,
+                  color: row.color || CARD_COLORS[index % CARD_COLORS.length],
+                })),
+                (slice) => slice.value,
+              ),
+            );
+          }
         })
         .catch(() => {
-          if (!cancelled) setItems((current) => current.filter((item) => !item.saved || item.saving));
+          if (!cancelled) {
+            setItems((current) => current.filter((item) => !item.saved || item.saving));
+            setShares([]);
+          }
         });
       return () => {
         cancelled = true;
@@ -260,6 +337,7 @@ function CardSection({
           ticker: "",
           name: "",
           image: null,
+          color: nextCardColor(current.map((item) => item.color)),
           saved: false,
         },
       ];
@@ -279,9 +357,11 @@ function CardSection({
         image = (await persistLogo(id, image)) || null;
       }
       await upsertCard(kind, { ...saved, image });
-      setItems((current) =>
-        current.map((entry) => (entry.id === id ? { ...entry, image, saving: false } : entry)),
-      );
+      const rows = await loadSortedCards(kind);
+      setItems((current) => mergeCards(rows, current.map((entry) =>
+        entry.id === id ? { ...entry, image, saved: true, saving: false } : entry,
+      )));
+      await loadShares(rows);
     } catch {
       setItems((current) =>
         current.map((entry) =>
@@ -299,13 +379,21 @@ function CardSection({
       return next;
     });
     if (saved) await upsertCard(kind, saved);
+    if (patch.color) {
+      setShares((current) =>
+        current.map((slice) => (slice.id === id ? { ...slice, color: patch.color ?? slice.color } : slice)),
+      );
+    }
   }
 
   function askRemove(item: ListedStock) {
     confirmAction("Delete", `Remove ${item.ticker || "this card"}?`, () => {
       if (item.saved) deleteCard(item.id);
-      setItems((current) => current.filter((entry) => entry.id !== item.id));
+      const next = items.filter((entry) => entry.id !== item.id);
+      setItems(next);
       setOpenSwipe(null);
+      const savedRows = next.filter((entry) => entry.saved);
+      loadShares(next).catch(() => setShares([]));
     });
   }
 
@@ -326,10 +414,13 @@ function CardSection({
   }
 
   const { colors: c } = useTheme();
+  const showShare = !locked && shares.length >= 2;
+  const looksItem = items.find((item) => item.id === looksFor) ?? null;
   return (
     <View>
       <View style={styles.sectionBar}>
         <Text style={[styles.section, { color: c.ink }]}>{title}</Text>
+        {showShare ? <ShareBar slices={shares} track={c.lift} /> : <View style={styles.shareSpacer} />}
         {locked ? null : (
           <Pressable onPress={addItem} hitSlop={10}>
             <Text style={[styles.plus, { color: c.ink }]}>+</Text>
@@ -350,16 +441,112 @@ function CardSection({
           onDelete={() => {
             if (!locked) askRemove(item);
           }}
-          onPickImage={() => pickImage(item.id)}
+          onPickImage={() => setLooksFor(item.id)}
           onChange={(patch) => updateItem(item.id, patch)}
           onConfirm={() => confirmItem(item.id)}
           onOpenStock={() => {
             if (!item.saved || item.saving) return;
             onOpenItem(item);
           }}
+          onEntry={kind === "cashflow" && item.saved ? () => setEntryFor(item.id) : undefined}
           onSwipe={onSwipe}
         />
       ))}
+
+      <CashflowQuickAdd
+        cardId={entryFor}
+        visible={Boolean(entryFor)}
+        onClose={() => setEntryFor(null)}
+        onSaved={() => onQuickSaved?.()}
+      />
+
+      <Modal
+        visible={Boolean(looksItem)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLooksFor(null)}
+      >
+        <Pressable style={[modalCenter.bg, { backgroundColor: c.overlay }]} onPress={() => setLooksFor(null)}>
+          <Pressable style={[modalCenter.sheet, { backgroundColor: c.modal }]} onPress={() => undefined}>
+            {looksItem ? (
+              <>
+                <Text style={[styles.looksTitle, { color: c.ink }]}>Card look</Text>
+                <View style={styles.looksWheel}>
+                  <ColorPalette
+                    value={looksItem.color || CARD_COLORS[0]}
+                    onChange={(color) => updateItem(looksItem.id, { color })}
+                    onGrab={onSwipe}
+                  />
+                </View>
+                <Pressable
+                  style={[styles.looksBtn, { borderColor: c.line }]}
+                  onPress={() => pickImage(looksItem.id)}
+                >
+                  <Text style={[styles.looksBtnText, { color: c.ink }]}>Add image</Text>
+                </Pressable>
+                <Pressable style={[styles.looksDone, { backgroundColor: c.ink }]} onPress={() => setLooksFor(null)}>
+                  <Text style={[styles.looksDoneText, { color: c.bg }]}>Done</Text>
+                </Pressable>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function ShareBar({
+  slices,
+  track,
+}: {
+  slices: { id: string; value: number; color: string }[];
+  track: string;
+}) {
+  const total = slices.reduce((sum, slice) => sum + Math.max(slice.value, 0), 0);
+  const raw = slices.map((slice) => (total <= 0 ? 0 : (Math.max(slice.value, 0) / total) * 100));
+  const percents = raw.map((value, index) => {
+    if (index === raw.length - 1) {
+      return Math.max(0, Math.round(100 - raw.slice(0, -1).reduce((sum, item) => sum + Math.round(item), 0)));
+    }
+    return Math.round(value);
+  });
+  return (
+    <View style={[styles.shareBar, { backgroundColor: track }]}>
+      {slices.map((slice, index) => (
+        <ShareSlice
+          key={slice.id}
+          label={`${percents[index]}%`}
+          flex={total <= 0 ? 1 : Math.max(slice.value, 0) || 0.0001}
+          color={slice.color}
+          gap={index === 0 ? 0 : 1}
+        />
+      ))}
+    </View>
+  );
+}
+
+function ShareSlice({
+  label,
+  flex,
+  color,
+  gap,
+}: {
+  label: string;
+  flex: number;
+  color: string;
+  gap: number;
+}) {
+  return (
+    <View style={[styles.shareSlice, { flex, backgroundColor: color, marginLeft: gap }]}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.45}
+        style={styles.sharePct}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -375,6 +562,7 @@ function StockCard({
   onChange,
   onConfirm,
   onOpenStock,
+  onEntry,
   onSwipe,
 }: {
   stock: ListedStock;
@@ -387,6 +575,7 @@ function StockCard({
   onChange: (patch: Partial<ListedStock>) => void;
   onConfirm: () => void;
   onOpenStock: () => void;
+  onEntry?: () => void;
   onSwipe?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
@@ -469,6 +658,15 @@ function StockCard({
             />
           </View>
         )}
+        {onEntry && saved ? (
+          <Pressable
+            onPress={onEntry}
+            hitSlop={8}
+            style={[styles.entryBtn, { backgroundColor: c.lift }]}
+          >
+            <Text style={[styles.entryText, { color: c.ink }]}>Entry</Text>
+          </Pressable>
+        ) : null}
         {locked || !saved ? null : (
           <View
             ref={nodeRef}
@@ -524,6 +722,28 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   section: { color: INK, fontSize: 17, fontWeight: "400" },
+  shareBar: {
+    flex: 1,
+    height: 12,
+    borderRadius: 6,
+    marginHorizontal: 12,
+    overflow: "hidden",
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  shareSlice: {
+    height: "100%",
+    justifyContent: "center",
+    paddingLeft: 3,
+    overflow: "hidden",
+  },
+  sharePct: {
+    color: "#ffffff",
+    fontSize: 7,
+    fontWeight: "700",
+    lineHeight: 8,
+  },
+  shareSpacer: { flex: 1 },
   plus: { color: INK, fontSize: 24, lineHeight: 26, fontWeight: "300" },
   sectionGap: { height: 16 },
   rowWrap: {
@@ -584,6 +804,12 @@ const styles = StyleSheet.create({
   logoMark: { color: "#ffffff", fontSize: 20, fontWeight: "700" },
   logoHint: { color: MUTED, fontSize: 16 },
   copy: { flex: 1, minWidth: 0 },
+  entryBtn: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  entryText: { fontSize: 13, fontWeight: "600" },
   savingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
   savingText: { fontSize: 12 },
   tickerInput: { color: MUTED, fontSize: 11, padding: 0 },
@@ -593,4 +819,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   confirmText: { color: INK, fontSize: 16, textAlign: "center", width: "100%" },
+  looksTitle: { fontSize: 16, fontWeight: "600", textAlign: "center", marginBottom: 10 },
+  looksWheel: { alignItems: "center", marginBottom: 12 },
+  looksBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  looksBtnText: { fontSize: 15 },
+  looksDone: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  looksDoneText: { fontSize: 15 },
 });

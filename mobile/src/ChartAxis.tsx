@@ -30,6 +30,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontStyle: "normal",
     fontWeight: "400",
+    zIndex: 0,
     fontFamily: Platform.select({
       ios: "System",
       android: "sans-serif",

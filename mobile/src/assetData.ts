@@ -130,11 +130,23 @@ export function stockStats(entries: HistoryEntry[]) {
     }
   });
   const averagePrice = priceCount === 0 ? 0 : priceSum / priceCount;
-  return { value, lastPrice, averagePrice, prices, amounts };
+  return {
+    value,
+    lastPrice,
+    averagePrice,
+    prices: withChartOrigin(prices),
+    amounts: withChartOrigin(amounts),
+    history: amounts,
+  };
+}
+
+function withChartOrigin(points: PricePoint[]) {
+  if (points.length !== 1) return points;
+  return [{ date: points[0].date, value: 0 }, points[0]];
 }
 
 export function stockValuePoints(entries: HistoryEntry[]) {
-  return stockStats(entries).amounts;
+  return stockStats(entries).history;
 }
 
 export type AssetKind = "start" | "inc" | "dec";
@@ -223,6 +235,16 @@ function isStartingBalance(entry: import("./models").CashflowEntry) {
   return entry.id === "c-start" || entry.label === "Starting balance";
 }
 
+function monthCountBetween(startMonth: string, endMonth: string) {
+  const start = startMonth.slice(0, 7);
+  const end = endMonth.slice(0, 7);
+  if (start.length < 7 || end.length < 7) return 1;
+  const [sy, sm] = start.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  const count = (ey - sy) * 12 + (em - sm) + 1;
+  return Math.max(count, 1);
+}
+
 export function cashflowStats(entries: import("./models").CashflowEntry[]) {
   const start = entries.find(isStartingBalance);
   const rest = entries
@@ -234,7 +256,8 @@ export function cashflowStats(entries: import("./models").CashflowEntry[]) {
 
   let running = start ? toAmount(start.amount) : 0;
   let expenses = 0;
-  const expenseMonths = new Set<string>();
+  let currentMonthExpenses = 0;
+  const currentMonth = todayIso().slice(0, 7);
   const prices: PricePoint[] = [];
   if (start && start.amount.trim() !== "") {
     prices.push({ date: start.date, value: running });
@@ -243,16 +266,18 @@ export function cashflowStats(entries: import("./models").CashflowEntry[]) {
     const amount = toAmount(entry.amount);
     if (entry.kind === "expense") {
       expenses += amount;
-      expenseMonths.add(entry.date.slice(0, 7));
+      if (entry.date.slice(0, 7) === currentMonth) currentMonthExpenses += amount;
       running -= amount;
     } else {
       running += amount;
     }
     prices.push({ date: entry.date, value: running });
   });
-  const monthCount = Math.max(expenseMonths.size, 1);
-  const monthlyExpenses = expenses / monthCount;
-  return { value: running, expenses, monthlyExpenses, prices };
+  const firstMonth = start?.date || rest[0]?.date || todayIso();
+  const lastMonth = rest[rest.length - 1]?.date || start?.date || todayIso();
+  const endMonth = lastMonth.slice(0, 7) > currentMonth ? lastMonth : currentMonth;
+  const monthlyExpenses = expenses / monthCountBetween(firstMonth, endMonth);
+  return { value: running, expenses, monthlyExpenses, currentMonthExpenses, prices };
 }
 
 export function todayIso() {

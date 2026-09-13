@@ -44,10 +44,30 @@ const BLUE = "#1D4ED8";
 const INK = "#111111";
 const MUTED = "#9CA3AF";
 const RANGES: RangeKey[] = ["1D", "1W", "1M", "3M", "1Y", "MAX"];
+const CARD_COLORS = [
+  "#3B82F6",
+  "#16A34A",
+  "#F59E0B",
+  "#DC2626",
+  "#8B5CF6",
+  "#06B6D4",
+  "#EC4899",
+  "#0F766E",
+];
+
+type PieSlice = { name: string; color: string; value: number };
+
+function cardColor(color: string | undefined, id: string) {
+  if (color) return color;
+  const n = [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return CARD_COLORS[n % CARD_COLORS.length];
+}
 export function HomeNetWorth({
+  reloadToken,
   onScrubbing,
   onProfile,
 }: {
+  reloadToken?: number;
   onScrubbing?: (active: boolean) => void;
   onProfile?: () => void;
 }) {
@@ -55,14 +75,18 @@ export function HomeNetWorth({
   const [range, setRange] = useState<RangeKey>("1Y");
   const [view, setView] = useState<"graph" | "pie">("graph");
   const [hover, setHover] = useState<PricePoint | null>(null);
-  const [pieHint, setPieHint] = useState<{ name: string; pct: number; value: number } | null>(
-    null,
-  );
+  const [pieHint, setPieHint] = useState<{
+    name: string;
+    pct: number;
+    value: number;
+    color: string;
+  } | null>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const [cash, setCash] = useState(0);
   const [trading, setTrading] = useState(0);
   const [stocks, setStocks] = useState(0);
   const [series, setSeries] = useState<PricePoint[]>([]);
+  const [pie, setPie] = useState<PieSlice[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,6 +98,7 @@ export function HomeNetWorth({
           setTrading(next.trading);
           setStocks(next.stocks);
           setSeries(next.series);
+          setPie(next.pie);
         })
         .catch(() => {
           if (cancelled) return;
@@ -81,22 +106,17 @@ export function HomeNetWorth({
           setTrading(0);
           setStocks(0);
           setSeries([]);
+          setPie([]);
         });
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [reloadToken]),
   );
 
   const total = cash + trading + stocks;
   const prices = useMemo(() => filterSeries(series, range), [series, range]);
   const shown = hover?.value ?? total;
-  const pie = [
-    { name: "Cashflow", color: "#3B82F6", value: Math.max(cash, 0) },
-    { name: "Trading", color: "#16A34A", value: Math.max(trading, 0) },
-    { name: "Stocks", color: c.ink, value: Math.max(stocks, 0) },
-  ];
-
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
@@ -155,12 +175,14 @@ export function HomeNetWorth({
           </View>
         ) : pieHint ? (
           <View style={styles.pieHintBox}>
-            <View style={[styles.pieHintChip, chipStyle(pieHint.name)]}>
-              <Text style={[styles.pieHintChipText, { color: c.ink }]}>
+            <View style={[styles.pieHintChip, { backgroundColor: pieHint.color }]}>
+              <Text selectable={false} style={[styles.pieHintChipText, { color: "#ffffff" }]}>
                 {pieHint.name} · {Math.round(pieHint.pct)}%
               </Text>
             </View>
-            <Text style={[styles.pieHintAmount, { color: c.ink }]}>{formatEuro(pieHint.value)}</Text>
+            <Text selectable={false} style={[styles.pieHintAmount, { color: c.ink }]}>
+              {formatEuro(pieHint.value)}
+            </Text>
           </View>
         ) : null}
         <View style={view === "pie" ? styles.pieHintToggle : styles.viewToggle}>
@@ -206,6 +228,7 @@ export async function loadNetWorthTotals() {
   let cash = 0;
   let trading = 0;
   let stocks = 0;
+  const pie: PieSlice[] = [];
 
   await Promise.all(
     cashCards
@@ -214,6 +237,11 @@ export async function loadNetWorthTotals() {
         const stats = cashflowStats(await loadCashflowEntries(card.id));
         cash += stats.value;
         cashSeries.push(stats.prices);
+        pie.push({
+          name: card.name || "Cashflow",
+          color: cardColor(card.color, card.id),
+          value: Math.max(stats.value, 0),
+        });
       }),
   );
   await Promise.all(
@@ -223,6 +251,11 @@ export async function loadNetWorthTotals() {
         const stats = tradingStats(await loadTradingMonths(card.id));
         trading += stats.value;
         tradeSeries.push(stats.prices);
+        pie.push({
+          name: card.ticker || card.name || "Trading",
+          color: cardColor(card.color, card.id),
+          value: Math.max(stats.value, 0),
+        });
       }),
   );
   await Promise.all(
@@ -230,8 +263,14 @@ export async function loadNetWorthTotals() {
       .filter((card) => card.saved)
       .map(async (card) => {
         const rows = await loadStockHistory(card.id);
-        stocks += stockStats(rows).value;
+        const value = stockStats(rows).value;
+        stocks += value;
         stockSeries.push(stockValuePoints(rows));
+        pie.push({
+          name: card.ticker || card.name || "Stock",
+          color: cardColor(card.color, card.id),
+          value: Math.max(value, 0),
+        });
       }),
   );
   await Promise.all(
@@ -239,8 +278,14 @@ export async function loadNetWorthTotals() {
       .filter((card) => card.saved)
       .map(async (card) => {
         const rows = await loadAssetHistory(card.id);
-        stocks += assetStats(rows).value;
+        const value = assetStats(rows).value;
+        stocks += value;
         stockSeries.push(assetValuePoints(rows));
+        pie.push({
+          name: card.ticker || card.name || "Asset",
+          color: cardColor(card.color, card.id),
+          value: Math.max(value, 0),
+        });
       }),
   );
 
@@ -248,6 +293,7 @@ export async function loadNetWorthTotals() {
     cash,
     trading,
     stocks,
+    pie: pie.filter((slice) => slice.value > 0),
     series: mergeValueSeries([
       mergeValueSeries(cashSeries),
       mergeValueSeries(tradeSeries),
@@ -410,19 +456,13 @@ function NetChart({
   );
 }
 
-function chipStyle(name: string) {
-  if (name === "Trading") return styles.pieHintTrading;
-  if (name === "Stocks") return styles.pieHintStocks;
-  return styles.pieHintCash;
-}
-
 function NetPie({
   slices,
   onHold,
   onScrubbing,
 }: {
-  slices: { name: string; color: string; value: number }[];
-  onHold: (slice: { name: string; pct: number; value: number } | null) => void;
+  slices: PieSlice[];
+  onHold: (slice: { name: string; pct: number; value: number; color: string } | null) => void;
   onScrubbing?: (active: boolean) => void;
 }) {
   const { colors: c } = useTheme();
@@ -462,7 +502,7 @@ function NetPie({
     let a = Math.atan2(dy, dx);
     if (a < -Math.PI / 2) a += Math.PI * 2;
     const hit = paths.find((slice) => a >= slice.start && a < slice.end && slice.pct > 0);
-    onHold(hit ? { name: hit.name, pct: hit.pct, value: hit.value } : null);
+    onHold(hit ? { name: hit.name, pct: hit.pct, value: hit.value, color: hit.color } : null);
   }
 
   const drag = useDragTrack(
@@ -474,9 +514,9 @@ function NetPie({
   );
 
   return (
-    <View style={styles.pieWrap}>
-      <View {...drag}>
-        <Svg width={size} height={size}>
+    <View style={[styles.pieWrap, styles.pieNoSelect]} pointerEvents="box-none">
+      <View {...drag} style={styles.pieNoSelect}>
+        <Svg width={size} height={size} pointerEvents="auto">
           {total === 0 ? (
             <Circle cx={cx} cy={cy} r={radius} stroke={c.muted} strokeWidth="1.5" fill="none" />
           ) : (
@@ -501,6 +541,7 @@ function NetPie({
                 fontFamily={svgUiFont}
                 fontStyle="normal"
                 textAnchor="middle"
+                pointerEvents="none"
               >
                 {`${Math.round(slice.pct)}%`}
               </SvgText>
@@ -589,6 +630,7 @@ const styles = StyleSheet.create({
   range: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
   rangeText: { color: MUTED, fontSize: 13, fontWeight: "600" },
   pieWrap: { marginTop: 10, alignItems: "center", minHeight: 220 },
+  pieNoSelect: { userSelect: "none" } as object,
   pieHintRow: {
     position: "relative",
     alignItems: "center",
@@ -617,10 +659,11 @@ const styles = StyleSheet.create({
   pieHintTrading: { backgroundColor: "#BBF7D0" },
   pieHintStocks: { backgroundColor: "#E5E7EB" },
   pieHintChipText: {
+    userSelect: "none",
     fontSize: 13,
     fontWeight: "600",
     fontStyle: "normal",
     fontFamily: "System",
   },
-  pieHintAmount: { fontSize: 20, fontWeight: "500", marginTop: 4 },
+  pieHintAmount: { fontSize: 20, fontWeight: "500", marginTop: 4, userSelect: "none" } as object,
 });

@@ -258,8 +258,8 @@ export function CashflowContent({ stock }: { stock?: ListedStock }) {
 
       <Text style={[styles.section, { color: c.ink }]}>Your net worth</Text>
       <View style={[styles.card, { backgroundColor: c.card, borderColor: c.line }]}>
-        <Row label="VALUE" value={formatEuro(stats.value)} />
-        <Row label="EXPENSES" value={formatEuro(stats.monthlyExpenses)} last />
+        <Row label="AVG EXPENSE" value={formatEuro(stats.monthlyExpenses)} />
+        <Row label="EXPENSES" value={formatEuro(stats.currentMonthExpenses)} last />
       </View>
 
       <View
@@ -433,11 +433,13 @@ function PieHintCard({
         {hint ? (
           <>
             <View style={[styles.pieHintChip, income ? styles.pieHintIncome : styles.pieHintExpense]}>
-              <Text style={[styles.pieHintChipText, { color: c.ink }]}>
+              <Text selectable={false} style={[styles.pieHintChipText, { color: c.ink }]}>
                 {hint.name} · {Math.round(hint.pct)}%
               </Text>
             </View>
-            <Text style={[styles.pieHintAmount, { color: c.ink }]}>{formatEuro(hint.amount)}</Text>
+            <Text selectable={false} style={[styles.pieHintAmount, { color: c.ink }]}>
+              {formatEuro(hint.amount)}
+            </Text>
           </>
         ) : null}
       </View>
@@ -647,7 +649,7 @@ function CategoryPie({
   );
 
   return (
-    <View style={styles.pieChart} {...drag}>
+    <View style={[styles.pieChart, styles.pieNoSelect]} {...drag}>
       <Svg width={size} height={size}>
         {paths.length === 0 ? (
           <Circle cx={cx} cy={cy} r={radius} stroke={c.muted} strokeWidth="1.5" fill="none" />
@@ -699,6 +701,7 @@ function CategoryPie({
                   fontFamily={svgUiFont}
                   fontStyle="normal"
                   textAnchor="middle"
+                  pointerEvents="none"
                 >
                   {`${Math.round(item.pct)}%`}
                 </SvgText>
@@ -718,6 +721,7 @@ function CategoryPie({
                   fontFamily={svgUiFont}
                   fontStyle="normal"
                   textAnchor="middle"
+                  pointerEvents="none"
                 >
                   {`${Math.round(slice.pct)}%`}
                 </SvgText>
@@ -1013,6 +1017,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   pieChart: { alignItems: "center" },
+  pieNoSelect: { userSelect: "none" } as object,
   pieCaption: { color: MUTED, fontSize: 11, marginTop: 0 },
   pieHintRow: {
     position: "relative",
@@ -1048,8 +1053,8 @@ const styles = StyleSheet.create({
   },
   pieHintIncome: { backgroundColor: "#BBF7D0" },
   pieHintExpense: { backgroundColor: "#FECACA" },
-  pieHintChipText: { color: INK, fontSize: 13, fontWeight: "600" },
-  pieHintAmount: { color: INK, fontSize: 20, fontWeight: "500", marginTop: 4 },
+  pieHintChipText: { color: INK, fontSize: 13, fontWeight: "600", userSelect: "none" } as object,
+  pieHintAmount: { color: INK, fontSize: 20, fontWeight: "500", marginTop: 4, userSelect: "none" } as object,
   range: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10 },
   rangeOn: { backgroundColor: "#EFEFEF" },
   rangeText: { color: MUTED, fontSize: 13, fontWeight: "600" },
